@@ -1,14 +1,13 @@
-# asc_processor.py
-
 import pandas as pd
-import plotly.graph_objects as go
+import numpy as np
 from scipy.signal import savgol_filter
 from scipy.ndimage import gaussian_filter1d
+from nptdms import TdmsFile
 
+def load_and_process_asc_file(file_name):
+    with open(file_name, 'r') as file:
+        content = file.read()
 
-# Function to load and process the .asc file
-def load_and_process_asc_file(file):
-    content = file.getvalue().decode("utf-8")
     lines = content.split('\n')
 
     # Find the start of the data
@@ -37,86 +36,50 @@ def load_and_process_asc_file(file):
 
     # Convert columns to appropriate types
     for col in df.columns:
-        try:
-            df[col] = df[col].apply(lambda x: x.replace(',', '.') if isinstance(x, str) else x)
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        except Exception as e:
-            print(f"Error processing column {col}: {str(e)}")
+        df[col] = df[col].apply(lambda x: x.replace(',', '.') if isinstance(x, str) else x)
+        df[col] = pd.to_numeric(df[col], errors='coerce')
 
     return df
 
+def load_and_process_csv_file(file_name):
+    return pd.read_csv(file_name)
 
-# Function to apply different smoothing techniques
+def load_and_process_tdms_file(file_name):
+    with TdmsFile.open(file_name) as tdms_file:
+        # Get all groups in the file
+        groups = tdms_file.groups()
+
+        # Create a dictionary to store data from all groups
+        data_dict = {}
+
+        for group in groups:
+            for channel in group.channels():
+                channel_name = f"{group.name}/{channel.name}"
+                data = channel[:]
+                data_dict[channel_name] = data
+
+        # Find the maximum length of data
+    max_length = max(len(data) for data in data_dict.values())
+
+    # Pad shorter arrays with NaN
+    for key in data_dict:
+        if len(data_dict[key]) < max_length:
+            pad_length = max_length - len(data_dict[key])
+            data_dict[key] = np.pad(data_dict[key], (0, pad_length), 'constant', constant_values=np.nan)
+
+    # Create DataFrame
+    df = pd.DataFrame(data_dict)
+    return df
+
 def apply_smoothing(data, method='savgol', window_length=21, poly_order=3, sigma=2):
     if window_length >= len(data):
         window_length = len(data) - 1
     if window_length % 2 == 0:
         window_length -= 1
 
-    if method == 'savgol':
-        return savgol_filter(data, window_length, poly_order)
-    elif method == 'mean':
+    if method == 'mean_line':
         return data.rolling(window=window_length, center=True).mean()
-    elif method == 'gaussian':
+    elif method == 'savitzky-golay':
+        return savgol_filter(data, window_length, poly_order)
+    elif method == 'gaussian_filter':
         return gaussian_filter1d(data, sigma=sigma)
-    elif method == 'all':
-        mean_smoothed = data.rolling(window=window_length, center=True).mean()
-        savgol_smoothed = savgol_filter(data, window_length, poly_order)
-        gaussian_smoothed = gaussian_filter1d(data, sigma=sigma)
-        return mean_smoothed, savgol_smoothed, gaussian_smoothed
-
-
-# Function to plot data using Plotly with smoothing and zoom options
-def plot_data(df, x_column, y_column, smoothing_params):
-    x_data = df[x_column]
-    y_data = df[y_column]
-
-    # Create Plotly figure
-    fig = go.Figure()
-
-    # Plot original data
-    fig.add_trace(go.Scatter(x=x_data, y=y_data, mode='lines', name='Original Data', line=dict(color='lightgray', width=2)))
-
-    # Apply smoothing if requested
-    if smoothing_params['apply']:
-        try:
-            if smoothing_params['method'] == 'all':
-                y_mean, y_savgol, y_gaussian = apply_smoothing(
-                    y_data,
-                    method='all',
-                    window_length=smoothing_params['window_length'],
-                    poly_order=smoothing_params['poly_order'],
-                    sigma=smoothing_params['sigma']
-                )
-                fig.add_trace(go.Scatter(x=x_data, y=y_mean, mode='lines', name='Mean Line', line=dict(color='red', width=2)))
-                fig.add_trace(go.Scatter(x=x_data, y=y_savgol, mode='lines', name='Savitzky-Golay', line=dict(color='blue', width=2)))
-                fig.add_trace(go.Scatter(x=x_data, y=y_gaussian, mode='lines', name='Gaussian', line=dict(color='green', width=2)))
-            else:
-                y_smoothed = apply_smoothing(
-                    y_data,
-                    method=smoothing_params['method'],
-                    window_length=smoothing_params['window_length'],
-                    poly_order=smoothing_params['poly_order'],
-                    sigma=smoothing_params['sigma']
-                )
-                if smoothing_params['method'] == 'mean':
-                    fig.add_trace(go.Scatter(x=x_data, y=y_smoothed, mode='lines', name='Mean Line', line=dict(color='red', width=2)))
-                elif smoothing_params['method'] == 'gaussian':
-                    fig.add_trace(go.Scatter(x=x_data, y=y_smoothed, mode='lines', name='Gaussian', line=dict(color='green', width=2)))
-                else:
-                    fig.add_trace(go.Scatter(x=x_data, y=y_smoothed, mode='lines', name='Savitzky-Golay', line=dict(color='blue', width=2)))
-        except Exception as e:
-            print(f"Smoothing error: {str(e)}")
-
-    # Update layout for better zooming and interactivity
-    fig.update_layout(
-        title=f'{y_column} vs {x_column}',
-        xaxis_title=x_column,
-        yaxis_title=y_column,
-        showlegend=True,
-        hovermode='x',
-        margin=dict(l=0, r=0, t=40, b=40),
-        height=600,
-    )
-
-    return fig
