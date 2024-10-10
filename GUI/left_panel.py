@@ -1,3 +1,5 @@
+# left_panel.py
+
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from GUI.components.axis_selection import AxisSelection
 from GUI.components.smoothing_options import SmoothingOptions
@@ -21,9 +23,15 @@ class LeftPanel(QWidget):
         self.comment_box = CommentBox(self)
 
         self.layout.addWidget(self.axis_selection)
-        self.layout.addWidget(self.smoothing_options)
-        self.layout.addWidget(self.limit_lines)
         self.layout.addWidget(self.data_filter)
         self.layout.addWidget(self.curve_fitting)
+        self.layout.addWidget(self.smoothing_options)
+        self.layout.addWidget(self.limit_lines)
         self.layout.addWidget(self.comment_box)
         self.layout.addStretch(1)
+
+        # Initialize components as hidden
+        self.smoothing_options.hide()
+        self.limit_lines.hide()
+        self.comment_box.hide()
+        self.data_filter.hide()

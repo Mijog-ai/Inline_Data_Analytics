@@ -18,7 +18,6 @@ class SmoothingOptions(QGroupBox):
         self.window_size.setRange(5, 500)
         self.window_size.setValue(51)
         self.layout.addRow("Window Size:", self.window_size)
-
         self.poly_order = QSpinBox()
         self.poly_order.setRange(1, 5)
         self.poly_order.setValue(3)

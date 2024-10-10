@@ -1,5 +1,5 @@
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QFileDialog, QMessageBox
-
+from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QFileDialog, QMessageBox, QAction
+from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 from .components.limit_lines import LimitLines
 from .menu_bar import MenuBar
 from .tool_bar  import ToolBar
@@ -8,6 +8,7 @@ from .right_panel import RightPanel
 from utils.asc_utils import load_and_process_asc_file, load_and_process_csv_file, load_and_process_tdms_file
 import pandas as pd
 import logging
+import os
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -20,13 +21,14 @@ class MainWindow(QMainWindow):
         self.layout = QHBoxLayout(self.central_widget)
 
         self.df = None
-        self.left_panel = None  # Initialize as None
-        self.right_panel = None  # Initialize as None
+        self.original_df = None
+        self.filtered_df = None
+
         self.setup_ui()
-        self.original_df = None  # Store the original dataframe
-        self.filtered_df = None  # Store the filtered dataframe
+        self.setup_edit_actions()
 
-
+        # Enable drag and drop
+        self.setAcceptDrops(True)
 
     def setup_ui(self):
         self.menu_bar = MenuBar(self)
@@ -35,27 +37,61 @@ class MainWindow(QMainWindow):
         self.tool_bar = ToolBar(self)
         self.addToolBar(self.tool_bar)
 
-        self.left_panel = LeftPanel(self)  # Explicitly set as attribute
-        self.right_panel = RightPanel(self)  # Explicitly set as attribute
+        self.left_panel = LeftPanel(self)
+        self.right_panel = RightPanel(self)
 
         self.layout.addWidget(self.left_panel, 1)
         self.layout.addWidget(self.right_panel, 4)
 
-        self.left_panel.limit_lines = LimitLines(self.left_panel)
-        self.left_panel.layout.addWidget(self.left_panel.limit_lines)
+        # Initialize components as hidden
+        self.left_panel.limit_lines.hide()
+        self.left_panel.smoothing_options.hide()
+        self.left_panel.comment_box.hide()
+        self.left_panel.data_filter.hide()
 
-    def load_file(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open File", "",
-                                                   "All Files (*);;ASC Files (*.asc);;CSV Files (*.csv);;TDMS Files (*.tdms)")
-        if file_name:
+    def setup_edit_actions(self):
+        self.show_limit_lines_action = QAction("Show Limit Lines", self, checkable=True)
+        self.show_limit_lines_action.triggered.connect(self.toggle_limit_lines)
+
+        self.show_smoothing_options_action = QAction('Show Smoothing Options', self, checkable=True)
+        self.show_smoothing_options_action.triggered.connect(self.toggle_smoothing_options)
+
+        self.show_comment_box_action = QAction('Show Comment Box', self, checkable=True)
+        self.show_comment_box_action.triggered.connect(self.toggle_comment_box)
+
+        self.show_data_filter_action = QAction('Show Data Filter', self, checkable=True)
+        self.show_data_filter_action.triggered.connect(self.toggle_data_filter)
+
+        self.menu_bar.add_edit_actions(self.show_limit_lines_action,
+                                       self.show_smoothing_options_action,
+                                       self.show_comment_box_action,
+                                       self.show_data_filter_action)
+
+    def toggle_limit_lines(self, checked):
+        self.left_panel.limit_lines.setVisible(checked)
+
+    def toggle_smoothing_options(self, checked):
+        self.left_panel.smoothing_options.setVisible(checked)
+
+    def toggle_comment_box(self, checked):
+        self.left_panel.comment_box.setVisible(checked)
+
+    def toggle_data_filter(self, checked):
+        self.left_panel.data_filter.setVisible(checked)
+
+    def load_file(self, file_path=None):
+        if file_path is None:
+            file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "",
+                                                       "All Files (*);;ASC Files (*.asc);;CSV Files (*.csv);;TDMS Files (*.tdms)")
+        if file_path:
             try:
-                file_extension = file_name.split('.')[-1].lower()
-                if file_extension == 'asc':
-                    self.df = load_and_process_asc_file(file_name)
-                elif file_extension == 'csv':
-                    self.df = load_and_process_csv_file(file_name)
-                elif file_extension == 'tdms':
-                    self.df = load_and_process_tdms_file(file_name)
+                file_extension = os.path.splitext(file_path)[1].lower()
+                if file_extension == '.asc':
+                    self.df = load_and_process_asc_file(file_path)
+                elif file_extension == '.csv':
+                    self.df = load_and_process_csv_file(file_path)
+                elif file_extension == '.tdms':
+                    self.df = load_and_process_tdms_file(file_path)
                 else:
                     raise ValueError(f"Unsupported file type: {file_extension}")
 
@@ -67,6 +103,15 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logging.error(f"Error loading file: {str(e)}")
                 QMessageBox.critical(self, "Error", f"An error occurred while loading the file: {str(e)}")
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent):
+        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        for file_path in files:
+            self.load_file(file_path)
 
     def apply_data_filter(self, column, min_val, max_val):
         try:
