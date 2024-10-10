@@ -30,8 +30,9 @@ class MenuBar(QMenuBar):
 
         self.edit_menu = self.addMenu('Edit')
 
-    def add_edit_actions(self, limit_lines_action, smoothing_options_action, comment_box_action, data_filter_action):
+    def add_edit_actions(self, limit_lines_action, smoothing_options_action, comment_box_action, data_filter_action, curve_fitting_action):
         self.edit_menu.addAction(limit_lines_action)
         self.edit_menu.addAction(smoothing_options_action)
         self.edit_menu.addAction(comment_box_action)
         self.edit_menu.addAction(data_filter_action)
+        self.edit_menu.addAction(curve_fitting_action)

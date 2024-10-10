@@ -35,3 +35,4 @@ class LeftPanel(QWidget):
         self.limit_lines.hide()
         self.comment_box.hide()
         self.data_filter.hide()
+        self.curve_fitting.hide()

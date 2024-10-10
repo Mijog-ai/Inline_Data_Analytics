@@ -9,6 +9,7 @@ from utils.asc_utils import load_and_process_asc_file, load_and_process_csv_file
 import pandas as pd
 import logging
 import os
+import csv
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -53,19 +54,24 @@ class MainWindow(QMainWindow):
         self.show_limit_lines_action = QAction("Show Limit Lines", self, checkable=True)
         self.show_limit_lines_action.triggered.connect(self.toggle_limit_lines)
 
-        self.show_smoothing_options_action = QAction('Show Smoothing Options', self, checkable=True)
+        self.show_smoothing_options_action = QAction('Smoothing_options', self, checkable=True)
         self.show_smoothing_options_action.triggered.connect(self.toggle_smoothing_options)
 
-        self.show_comment_box_action = QAction('Show Comment Box', self, checkable=True)
+        self.show_comment_box_action = QAction('Add_Comment_plot', self, checkable=True)
         self.show_comment_box_action.triggered.connect(self.toggle_comment_box)
 
-        self.show_data_filter_action = QAction('Show Data Filter', self, checkable=True)
+        self.show_data_filter_action = QAction('Data_Filter_plotter', self, checkable=True)
         self.show_data_filter_action.triggered.connect(self.toggle_data_filter)
+
+        self.show_curve_fitting_action = QAction('Curve Fitting', self, checkable = True)
+        self.show_curve_fitting_action.triggered.connect(self.toggle_curve_fitting)
+
 
         self.menu_bar.add_edit_actions(self.show_limit_lines_action,
                                        self.show_smoothing_options_action,
                                        self.show_comment_box_action,
-                                       self.show_data_filter_action)
+                                       self.show_data_filter_action,
+                                       self.show_curve_fitting_action)
 
     def toggle_limit_lines(self, checked):
         self.left_panel.limit_lines.setVisible(checked)
@@ -78,6 +84,9 @@ class MainWindow(QMainWindow):
 
     def toggle_data_filter(self, checked):
         self.left_panel.data_filter.setVisible(checked)
+
+    def toggle_curve_fitting(self, checked):
+        self.left_panel.curve_fitting.setVisible(checked)
 
     def load_file(self, file_path=None):
         if file_path is None:
@@ -162,7 +171,7 @@ class MainWindow(QMainWindow):
         if file_name:
             try:
                 if file_name.endswith('.csv'):
-                    self.df.to_csv(file_name, index=False)
+                    self.df.to_csv(file_name, sep=';', index=False)
                 elif file_name.endswith('.xlsx'):
                     self.df.to_excel(file_name, index=False)
                 QMessageBox.information(self, "Success", "Data saved successfully!")
