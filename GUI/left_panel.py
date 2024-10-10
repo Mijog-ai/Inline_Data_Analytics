@@ -1,10 +1,10 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
-from components.axis_selection import AxisSelection
-from components.smoothing_options import SmoothingOptions
-from components.limit_lines import LimitLines
-from components.data_filter import DataFilter
-from components.curve_fitting import CurveFitting
-from components.comment_box import CommentBox
+from GUI.components.axis_selection import AxisSelection
+from GUI.components.smoothing_options import SmoothingOptions
+from GUI.components.limit_lines import LimitLines
+from GUI.components.data_filter import DataFilter
+from GUI.components.curve_fitting import CurveFitting
+from GUI.components.comment_box import CommentBox
 
 class LeftPanel(QWidget):
     def __init__(self, parent):

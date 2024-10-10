@@ -27,3 +27,4 @@ class MenuBar(QMenuBar):
         exit_action = QAction('Exit', self)
         exit_action.triggered.connect(self.parent().close)
         file_menu.addAction(exit_action)
+
