@@ -88,6 +88,10 @@ class MainWindow(QMainWindow):
     def toggle_curve_fitting(self, checked):
         self.left_panel.curve_fitting.setVisible(checked)
 
+    def new_session(self):
+        pass
+
+
     def load_file(self, file_path=None):
         if file_path is None:
             file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "",

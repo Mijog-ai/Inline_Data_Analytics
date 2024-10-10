@@ -8,6 +8,10 @@ class MenuBar(QMenuBar):
     def setup_menu(self):
         file_menu = self.addMenu('File')
 
+        new_session = QAction('New Session', self)
+        new_session.triggered.connect(self.parent().new_session)
+        file_menu.addAction(new_session)
+
         load_action = QAction('Load File', self)
         load_action.triggered.connect(self.parent().load_file)
         file_menu.addAction(load_action)
