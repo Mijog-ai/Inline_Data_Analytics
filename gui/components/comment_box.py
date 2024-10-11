@@ -14,3 +14,6 @@ class CommentBox(QGroupBox):
 
     def get_comments(self):
         return self.comment_box.toPlainText()
+
+    def set_comments(self, comments):
+        self.comment_box.setPlainText(comments)

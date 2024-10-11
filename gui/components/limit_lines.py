@@ -44,3 +44,6 @@ class LimitLines(QGroupBox):
             main_window.update_plot()
         else:
             QMessageBox.warning(self, "Error", "Unable to update plot")
+
+    def set_limit_lines(self, limit_lines):
+        self.limit_lines = limit_lines

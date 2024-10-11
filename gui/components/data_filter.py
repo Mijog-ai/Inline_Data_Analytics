@@ -25,8 +25,11 @@ class DataFilter(QGroupBox):
         self.setLayout(self.layout)
 
     def update_columns(self, columns):
+        current_text = self.filter_column.currentText()
         self.filter_column.clear()
         self.filter_column.addItems(columns)
+        if current_text in columns:
+            self.filter_column.setCurrentText(current_text)
 
     def apply_filter(self):
         try:
@@ -35,8 +38,8 @@ class DataFilter(QGroupBox):
                 raise Exception("Could not find MainWindow")
 
             column = self.filter_column.currentText()
-            min_val = self.min_value.text()
-            max_val = self.max_value.text()
+            min_val = float(self.min_value.text()) if self.min_value.text() else None
+            max_val = float(self.max_value.text()) if self.max_value.text() else None
 
             logging.info(f"Applying filter on column: {column}, min: {min_val}, max: {max_val}")
 
@@ -67,3 +70,10 @@ class DataFilter(QGroupBox):
                 return parent
             parent = parent.parent()
         return None
+
+
+    def set_filter(self, column, min_value, max_value):
+        if column in [self.filter_column.itemText(i) for i in range(self.filter_column.count())]:
+            self.filter_column.setCurrentText(column)
+        self.min_value.setText(str(min_value) if min_value is not None else "")
+        self.max_value.setText(str(max_value) if max_value is not None else "")

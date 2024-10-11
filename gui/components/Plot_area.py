@@ -16,7 +16,11 @@ class PlotArea(QWidget):
         self.cursor = None
         self.show_cursor = True
         self.show_legend = True
+        self.yaxis_approx_value_highlighter = True
         self.setup_ui()
+        self.vertical_line = None
+        self.highlight_points = []
+
 
     def setup_ui(self):
         self.figure = Figure(figsize=(5, 4), dpi=100)
@@ -28,17 +32,29 @@ class PlotArea(QWidget):
         self.cursor_checkbox = QCheckBox("Show Cursor")
         self.cursor_checkbox.setChecked(True)
         self.cursor_checkbox.stateChanged.connect(self.toggle_cursor)
+
         self.legend_checkbox = QCheckBox("Show Legend")
         self.legend_checkbox.setChecked(True)
         self.legend_checkbox.stateChanged.connect(self.toggle_legend)
+
+        self.highlighter_checkbox = QCheckBox("Highlight yaxis_values")
+        self.highlighter_checkbox.setChecked(True)
+        self.highlighter_checkbox.stateChanged.connect(self.toggle_highlighter)
+
         checkbox_layout.addWidget(self.cursor_checkbox)
         checkbox_layout.addWidget(self.legend_checkbox)
+        checkbox_layout.addWidget(self.highlighter_checkbox)
+
 
         self.layout.addLayout(checkbox_layout)
         self.layout.addWidget(self.toolbar)
         self.layout.addWidget(self.canvas)
 
         self.setLayout(self.layout)
+
+    def toggle_highlighter(self,state):
+        self.yaxis_approx_value_highlighter = bool(state)
+        self.update_plot()
 
     def toggle_cursor(self, state):
         self.show_cursor = bool(state)
@@ -71,7 +87,10 @@ class PlotArea(QWidget):
                 logging.debug(f"Plotting column: {y_column}")
                 if i > 0:
                     new_ax = ax.twinx()
-                    new_ax.spines['right'].set_position(('axes', 1 + 0.1 * (i-1)))
+                    new_ax.spines['right'].set_visible(False)
+                    new_ax.spines['left'].set_position(('axes', -0.1 * i))
+                    new_ax.yaxis.set_label_position('left')
+                    new_ax.yaxis.set_ticks_position('left')
                     axes.append(new_ax)
                 else:
                     new_ax = ax
@@ -129,10 +148,15 @@ class PlotArea(QWidget):
                     ylabel = ax.get_ylabel()
                     sel.annotation.set_text(f"{xlabel}: {x:.2f}\n{ylabel}: {y:.2f}")
                     sel.annotation.get_bbox_patch().set(fc="white", alpha=0.8)
+
+
             else:
                 if self.cursor:
                     self.cursor.remove()
                     self.cursor = None
+
+            if self.yaxis_approx_value_highlighter:
+                self.canvas.mpl_connect('button_press_event', self.on_click)
 
             self.canvas.draw()
             logging.info("Plot completed successfully")
@@ -183,3 +207,30 @@ class PlotArea(QWidget):
 
     def clear(self):
         self.text_edit.clear()
+
+    def on_click(self, event):
+        if event.inaxes:
+            x = event.xdata
+            self.highlight_point(x)
+
+    def highlight_point(self, x):
+        # Remove previous vertical line and highlighted points
+        if self.vertical_line:
+            self.vertical_line.remove()
+        for point in self.highlight_points:
+            point.remove()
+        self.highlight_points = []
+
+        # Add new vertical line
+        self.vertical_line = self.figure.axes[0].axvline(x, color='gray', linestyle='--')
+
+        # Highlight points on each axis
+        for ax in self.figure.axes:
+            for line in ax.lines:
+                xdata = line.get_xdata()
+                ydata = line.get_ydata()
+                index = np.argmin(np.abs(xdata - x))
+                highlight = ax.plot(xdata[index], ydata[index], 'o', color='red', markersize=8)[0]
+                self.highlight_points.append(highlight)
+
+        self.canvas.draw()

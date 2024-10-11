@@ -1,15 +1,16 @@
 from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QFileDialog, QMessageBox, QAction
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
-from .menu_bar import MenuBar
-from .tool_bar import ToolBar
-from .left_panel import LeftPanel
-from .right_panel import RightPanel
+from gui.menu_bar import MenuBar
+from gui.tool_bar import ToolBar
+from gui.left_panel import LeftPanel
+from gui.right_panel import RightPanel
 from utils.asc_utils import load_and_process_asc_file, load_and_process_csv_file, load_and_process_tdms_file
 import pandas as pd
 import numpy as np
 import logging
 import os
+from gui.components.session_manager import SessionManager
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -32,6 +33,17 @@ class MainWindow(QMainWindow):
 
         # Enable drag and drop
         self.setAcceptDrops(True)
+
+        self.session_manager = SessionManager(self)
+
+    # def setup_session_actions(self):
+    #     save_session_action = QAction('Save Session', self)
+    #     save_session_action.triggered.connect(self.session_manager.save_session)
+    #     self.menu_bar.file_menu.addAction(save_session_action)
+    #
+    #     load_session_action = QAction('Load Session', self)
+    #     load_session_action.triggered.connect(self.session_manager.load_session)
+    #     self.menu_bar.file_menu.addAction(load_session_action)
 
     def setup_menu_bar(self):
         self.menu_bar = MenuBar(self)
@@ -341,31 +353,14 @@ class MainWindow(QMainWindow):
     #     else:
     #         logging.warning("No data available for sampling")
 
-    def update_plot(self):
-        if self.filtered_df is not None and not self.filtered_df.empty:
-            try:
-                x_column = self.left_panel.axis_selection.x_combo.currentText()
-                y_columns = [item.text() for item in self.left_panel.axis_selection.y_list.selectedItems()]
-                smoothing_params = self.left_panel.smoothing_options.get_params()
-
-                limit_lines = []
-                if hasattr(self.left_panel, 'limit_lines') and hasattr(self.left_panel.limit_lines, 'get_limit_lines'):
-                    limit_lines = self.left_panel.limit_lines.get_limit_lines()
-
-                logging.info(f"Updating plot with data: x={x_column}, y={y_columns}")
-                self.right_panel.plot_area.plot_data(self.filtered_df, x_column, y_columns, smoothing_params,
-                                                     limit_lines)
-            except Exception as e:
-                logging.error(f"Error updating plot: {str(e)}")
-                QMessageBox.critical(self, "Error", f"Failed to update plot: {str(e)}")
-        else:
-            logging.warning("No data available to plot")
-
     def apply_data_filter(self, column, min_val, max_val):
+
+
         try:
+
             logging.info(f"Applying data filter: column={column}, min={min_val}, max={max_val}")
 
-            if column not in self.original_df.columns:
+            if self.original_df is None or column not in self.original_df.columns:
                 raise ValueError(f"Column '{column}' not found in the dataframe")
 
             self.filtered_df = self.original_df.copy()
@@ -378,9 +373,8 @@ class MainWindow(QMainWindow):
             if self.filtered_df.empty:
                 raise ValueError("No data points in the selected range")
 
-            self.update_plot()
-            self.right_panel.statistics_area.update_stats(self.filtered_df)
             logging.info(f"Filter applied. Rows before: {len(self.original_df)}, after: {len(self.filtered_df)}")
+            self.update_plot(update_filter=False)
             QMessageBox.information(self, "Filter Applied", "Data filter applied successfully")
         except ValueError as e:
             logging.error(f"Error applying filter: {str(e)}")
@@ -390,3 +384,39 @@ class MainWindow(QMainWindow):
             logging.error(f"Unexpected error applying filter: {str(e)}")
             QMessageBox.critical(self, "Error", f"An unexpected error occurred: {str(e)}")
             self.filtered_df = self.original_df.copy()
+
+
+    def update_plot(self, update_filter=True):
+
+        if self.filtered_df is not None and not self.filtered_df.empty:
+            try:
+
+                x_column = self.left_panel.axis_selection.x_combo.currentText()
+                y_columns = [item.text() for item in self.left_panel.axis_selection.y_list.selectedItems()]
+                smoothing_params = self.left_panel.smoothing_options.get_params()
+
+                limit_lines = []
+                if hasattr(self.left_panel, 'limit_lines') and hasattr(self.left_panel.limit_lines, 'get_limit_lines'):
+                    limit_lines = self.left_panel.limit_lines.get_limit_lines()
+
+                # Apply data filter if needed
+                if update_filter:
+                    filter_column = self.left_panel.data_filter.filter_column.currentText()
+                    min_value = self.left_panel.data_filter.min_value.text()
+                    max_value = self.left_panel.data_filter.max_value.text()
+
+                    if filter_column and (min_value or max_value):
+                        self.apply_data_filter(filter_column,
+                                               float(min_value) if min_value else None,
+                                               float(max_value) if max_value else None)
+
+                logging.info(f"Updating plot with filtered data: x={x_column}, y={y_columns}")
+                self.right_panel.plot_area.plot_data(self.filtered_df, x_column, y_columns, smoothing_params,
+                                                     limit_lines)
+            except Exception as e:
+                logging.error(f"Error updating plot: {str(e)}")
+                QMessageBox.critical(self, "Error", f"Failed to update plot: {str(e)}")
+
+
+        else:
+            logging.warning("No data available to plot")

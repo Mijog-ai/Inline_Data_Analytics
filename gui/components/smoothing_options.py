@@ -44,3 +44,10 @@ class SmoothingOptions(QGroupBox):
 
     def clear(self):
         self.text_edit.clear()
+
+    def set_params(self, params):
+        self.smooth_check.setChecked(params['apply'])
+        self.smooth_method.setCurrentText(params['method'])
+        self.window_size.setValue(params['window_length'])
+        self.poly_order.setValue(params['poly_order'])
+        self.sigma.setValue(params['sigma'])
