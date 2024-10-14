@@ -73,45 +73,6 @@ class MainWindow(QMainWindow):
 
 
 
-    def new_session(self):
-
-
-        # Clear data
-        self.df = None
-        self.original_df = None
-        self.filtered_df = None
-
-        print("Resetting UI components")
-        logging.info("Resetting UI components")
-
-        # Reset left panel
-        if hasattr(self, 'left_panel'):
-            if hasattr(self.left_panel, 'axis_selection'):
-                self.left_panel.axis_selection.update_options([])
-            if hasattr(self.left_panel, 'data_filter'):
-                self.left_panel.data_filter.update_columns([])
-            if hasattr(self.left_panel, 'smoothing_options'):
-                self.left_panel.smoothing_options.reset()
-            if hasattr(self.left_panel, 'limit_lines'):
-                self.left_panel.limit_lines.clear_lines()
-            if hasattr(self.left_panel, 'comment_box'):
-                self.left_panel.comment_box.clear()
-
-        # Reset right panel
-        if hasattr(self, 'right_panel'):
-            # Clear plot area
-            if hasattr(self.right_panel, 'plot_area'):
-                print("Clearing plot")
-                logging.info("Clearing plot")
-                self.right_panel.plot_area.figure.clear()
-                self.right_panel.plot_area.canvas.draw()
-
-            # Reset statistics area
-            if hasattr(self.right_panel, 'statistics_area'):
-                print("Resetting statistics area")
-                logging.info("Resetting statistics area")
-                self.right_panel.statistics_area.clear_stats()
-
 
     def load_file(self, file_path=None):
         print("load_file method called in MainWindow")
@@ -347,9 +308,9 @@ class MainWindow(QMainWindow):
                 # Get the custom title from the left panel
                 custom_title = self.left_panel.get_plot_title()
 
-                logging.info(f"Updating plot with filtered data: x={x_column}, y={y_columns}")
+                logging.info(f"Updating plot with filtered data: x={x_column}, y={y_columns}, title={custom_title}")
                 self.right_panel.plot_area.plot_data(self.filtered_df, x_column, y_columns, smoothing_params,
-                                                     limit_lines, title = custom_title)
+                                                     limit_lines, title=custom_title)
 
                 self.update_statistics()
 
@@ -361,9 +322,8 @@ class MainWindow(QMainWindow):
 
         else:
             logging.warning("No data available to plot")
-            self.right_panel.plot_area.clear_plot()
 
-        self.set_unsaved_changes(True)
+        self.unsaved_changes = True
 
     def update_statistics(self):
         if self.filtered_df is not None and not self.filtered_df.empty:
@@ -371,12 +331,13 @@ class MainWindow(QMainWindow):
         else:
             logging.warning("No filtered data available to update statistics")
 
-    def setup_menu_actions(self):
-        # Connect the "New Session" action
-        self.menu_bar.connect_new_session_action(self.session_manager.new_session)
+    def setup_connections(self):
+        # Connect the title_changed signal to on_title_changed method
+        self.left_panel.title_changed.connect(self.on_title_changed)
 
-    def has_unsaved_changes(self):
-        return self.unsaved_changes
-
-    def set_unsaved_changes(self, value):
-        self.unsaved_changes = value
+    def on_title_changed(self, new_title):
+        logging.debug(f"Title change received in MainWindow: {new_title}")
+        try:
+            self.update_plot(update_filter=False)
+        except Exception as e:
+            logging.error(f"Error updating plot after title change: {str(e)}")

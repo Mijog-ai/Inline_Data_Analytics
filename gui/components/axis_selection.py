@@ -63,3 +63,7 @@ class AxisSelection(QGroupBox):
                 return parent
             parent = parent.parent()
         return None
+
+    def reset(self):
+        self.x_combo.setCurrentIndex(0)
+        self.y_list.clearSelection()

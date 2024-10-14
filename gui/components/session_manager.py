@@ -129,25 +129,19 @@ class SessionManager:
         logging.info("Initiating new session")
         try:
             # Check if there's unsaved data
-            if self.main_window.has_unsaved_changes():
-                logging.info("Unsaved changes detected")
+            if self.main_window.unsaved_changes:
                 reply = QMessageBox.question(self.main_window, 'Save Changes?',
                                              "Do you want to save the current session before creating a new one?",
                                              QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
 
                 if reply == QMessageBox.Yes:
-                    logging.info("User chose to save changes")
                     self.save_session()
                 elif reply == QMessageBox.Cancel:
-                    logging.info("User cancelled new session creation")
                     return  # User cancelled, don't create a new session
 
             # Clear everything and create a new session
-            logging.info("Clearing all data")
             self.main_window.clear_all_data()
-            logging.info("Resetting UI")
             self.main_window.reset_ui()
-            logging.info("Updating plot")
             self.main_window.update_plot()
 
             QMessageBox.information(self.main_window, "New Session", "A new session has been created.")

@@ -17,3 +17,6 @@ class CommentBox(QGroupBox):
 
     def set_comments(self, comments):
         self.comment_box.setPlainText(comments)
+
+    def clear(self):
+        self.comment_box.clear()

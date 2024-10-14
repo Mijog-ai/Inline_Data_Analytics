@@ -51,3 +51,10 @@ class SmoothingOptions(QGroupBox):
         self.window_size.setValue(params['window_length'])
         self.poly_order.setValue(params['poly_order'])
         self.sigma.setValue(params['sigma'])
+
+    def reset(self):
+        self.smooth_check.setChecked(False)
+        self.smooth_method.setCurrentIndex(0)  # Set to first item ('Mean Line')
+        self.window_size.setValue(51)
+        self.poly_order.setValue(3)
+        self.sigma.setValue(2.0)

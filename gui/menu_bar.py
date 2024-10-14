@@ -31,8 +31,9 @@ class MenuBar(QMenuBar):
         self.file_menu.addSeparator()
 
         # Add New Session action
-        self.new_session_action = QAction('New Session', self)
-        self.file_menu.addAction(self.new_session_action)
+        new_session_action = QAction('New Session', self)
+        new_session_action.triggered.connect(self.new_session)
+        self.file_menu.addAction(new_session_action)
 
         save_session_action = QAction('Save Session', self)
         save_session_action.triggered.connect(self.save_session)
@@ -69,6 +70,12 @@ class MenuBar(QMenuBar):
         else:
             print("Session manager not initialized")
 
+    def new_session(self):
+        if hasattr(self.main_window, 'session_manager'):
+            self.main_window.session_manager.new_session()
+        else:
+            print("Session manager not initialized")
+
     def load_file_triggered(self):
         print("Load File menu item clicked")
         logging.info("Load File menu item clicked")
@@ -77,6 +84,3 @@ class MenuBar(QMenuBar):
         else:
             print("MainWindow does not have load_file method")
             logging.error("MainWindow does not have load_file method")
-
-    def connect_new_session_action(self, slot):
-        self.new_session_action.triggered.connect(slot)

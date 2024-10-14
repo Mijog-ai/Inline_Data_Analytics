@@ -81,7 +81,7 @@ class PlotArea(QWidget):
 
     def plot_data(self, df, x_column, y_columns, smoothing_params, limit_lines=[], title=None):
         try:
-            logging.info(f"Plotting data: x={x_column}, y={y_columns}")
+            logging.info(f"Plotting data: x={x_column}, y={y_columns}, title= {title}")
             self.figure.clear()
 
             ax = self.figure.add_subplot(111)
