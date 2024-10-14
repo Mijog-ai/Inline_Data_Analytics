@@ -1,4 +1,5 @@
 from PyQt5.QtWidgets import QMenuBar, QAction
+import logging
 
 class MenuBar(QMenuBar):
     def __init__(self, parent):
@@ -9,8 +10,10 @@ class MenuBar(QMenuBar):
     def setup_menu(self):
         self.file_menu = self.addMenu('File')
 
+
+
         load_action = QAction('Load File', self)
-        load_action.triggered.connect(self.main_window.load_file)
+        load_action.triggered.connect(self.load_file_triggered)
         self.file_menu.addAction(load_action)
 
         save_data_action = QAction('Save Data', self)
@@ -26,6 +29,10 @@ class MenuBar(QMenuBar):
         self.file_menu.addAction(export_table_action)
 
         self.file_menu.addSeparator()
+
+        # Add New Session action
+        self.new_session_action = QAction('New Session', self)
+        self.file_menu.addAction(self.new_session_action)
 
         save_session_action = QAction('Save Session', self)
         save_session_action.triggered.connect(self.save_session)
@@ -61,3 +68,15 @@ class MenuBar(QMenuBar):
             self.main_window.session_manager.load_session()
         else:
             print("Session manager not initialized")
+
+    def load_file_triggered(self):
+        print("Load File menu item clicked")
+        logging.info("Load File menu item clicked")
+        if hasattr(self.parent(), 'load_file'):
+            self.parent().load_file()
+        else:
+            print("MainWindow does not have load_file method")
+            logging.error("MainWindow does not have load_file method")
+
+    def connect_new_session_action(self, slot):
+        self.new_session_action.triggered.connect(slot)

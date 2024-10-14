@@ -1,5 +1,5 @@
 # left_panel.py
-from PyQt5.QtWidgets import QWidget, QVBoxLayout
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit
 from gui.components.axis_selection import AxisSelection
 from gui.components.smoothing_options import SmoothingOptions
 from gui.components.limit_lines import LimitLines
@@ -32,6 +32,14 @@ class LeftPanel(QWidget):
         self.layout.addWidget(self.comment_box)
         self.layout.addStretch(1)
 
+        title_layout = QHBoxLayout()
+        title_label = QLabel("Plot Title:")
+        self.title_input = QLineEdit()
+        self.title_input.setPlaceholderText("Enter plot title")
+        title_layout.addWidget(title_label)
+        title_layout.addWidget(self.title_input)
+        self.layout.addLayout(title_layout)
+
         # Initialize components as hidden
         self.smoothing_options.hide()
         self.limit_lines.hide()
@@ -45,3 +53,10 @@ class LeftPanel(QWidget):
     def update_options(self, columns):
         self.axis_selection.update_options(columns)
         self.data_filter.update_columns(columns)
+
+
+    def get_plot_title(self):
+        return self.title_input.text()
+
+    def set_plot_title(self, title):
+        self.title_input.setText(title)

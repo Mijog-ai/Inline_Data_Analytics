@@ -47,3 +47,6 @@ class LimitLines(QGroupBox):
 
     def set_limit_lines(self, limit_lines):
         self.limit_lines = limit_lines
+
+    def clear_lines(self):
+        self.limit_lines = []

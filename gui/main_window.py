@@ -1,5 +1,4 @@
 from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QFileDialog, QMessageBox, QAction
-from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 from gui.menu_bar import MenuBar
 from gui.tool_bar import ToolBar
@@ -7,7 +6,6 @@ from gui.left_panel import LeftPanel
 from gui.right_panel import RightPanel
 from utils.asc_utils import load_and_process_asc_file, load_and_process_csv_file, load_and_process_tdms_file
 import pandas as pd
-import numpy as np
 import logging
 import os
 from gui.components.session_manager import SessionManager
@@ -25,7 +23,7 @@ class MainWindow(QMainWindow):
         self.df = None
         self.original_df = None
         self.filtered_df = None
-        # self.sampled_df = None
+        self.unsaved_changes = False
 
         self.setup_menu_bar()
         self.setup_ui()
@@ -35,15 +33,6 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self.session_manager = SessionManager(self)
-
-    # def setup_session_actions(self):
-    #     save_session_action = QAction('Save Session', self)
-    #     save_session_action.triggered.connect(self.session_manager.save_session)
-    #     self.menu_bar.file_menu.addAction(save_session_action)
-    #
-    #     load_session_action = QAction('Load Session', self)
-    #     load_session_action.triggered.connect(self.session_manager.load_session)
-    #     self.menu_bar.file_menu.addAction(load_session_action)
 
     def setup_menu_bar(self):
         self.menu_bar = MenuBar(self)
@@ -62,8 +51,27 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(self.left_panel, 1)
         self.layout.addWidget(self.right_panel, 4)
 
-        # self.left_panel.sampling_options.enable_sampling.stateChanged.connect(self.update_sampling)
-        # self.left_panel.sampling_options.sampling_rate.valueChanged.connect(self.update_sampling)
+    def clear_all_data(self):
+        self.df = None
+        self.original_df = None
+        self.filtered_df = None
+        self.unsaved_changes = False
+
+    def reset_ui(self):
+        # Reset LeftPanel
+        self.left_panel.axis_selection.update_options([])
+        self.left_panel.smoothing_options.reset()
+        self.left_panel.limit_lines.clear_lines()
+        self.left_panel.data_filter.reset()
+        self.left_panel.curve_fitting.reset()
+        self.left_panel.comment_box.clear()
+        self.left_panel.set_plot_title("")
+
+        # Reset RightPanel
+        self.right_panel.plot_area.clear_plot()
+        self.right_panel.statistics_area.clear_stats()
+
+
 
     def new_session(self):
 
@@ -182,31 +190,6 @@ class MainWindow(QMainWindow):
     def new_session(self):
         pass
 
-    # def load_file(self, file_path=None):
-    #     if file_path is None:
-    #         file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "",
-    #                                                    "All Files (*);;ASC Files (*.asc);;CSV Files (*.csv);;TDMS Files (*.tdms)")
-    #     if file_path:
-    #         try:
-    #             file_extension = os.path.splitext(file_path)[1].lower()
-    #             if file_extension == '.asc':
-    #                 self.df = load_and_process_asc_file(file_path)
-    #             elif file_extension == '.csv':
-    #                 self.df = load_and_process_csv_file(file_path)
-    #             elif file_extension == '.tdms':
-    #                 self.df = load_and_process_tdms_file(file_path)
-    #             else:
-    #                 raise ValueError(f"Unsupported file type: {file_extension}")
-    #
-    #             self.original_df = self.df.copy()
-    #             self.filtered_df = self.df.copy()
-    #             self.update_sampling()
-    #             self.update_ui_after_load()
-    #             QMessageBox.information(self, "Success", "File loaded successfully!")
-    #         except Exception as e:
-    #             logging.error(f"Error loading file: {str(e)}")
-    #             QMessageBox.critical(self, "Error", f"An error occurred while loading the file: {str(e)}")
-
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
@@ -215,37 +198,6 @@ class MainWindow(QMainWindow):
         files = [u.toLocalFile() for u in event.mimeData().urls()]
         for file_path in files:
             self.load_file(file_path)
-
-    # def apply_data_filter(self, column, min_val, max_val):
-    #     try:
-    #         logging.info(f"Applying data filter: column={column}, min={min_val}, max={max_val}")
-    #
-    #         if column not in self.original_df.columns:
-    #             raise ValueError(f"Column '{column}' not found in the dataframe")
-    #
-    #         self.filtered_df = self.original_df.copy()
-    #
-    #         if min_val is not None:
-    #             self.filtered_df = self.filtered_df[self.filtered_df[column] >= min_val]
-    #         if max_val is not None:
-    #             self.filtered_df = self.filtered_df[self.filtered_df[column] <= max_val]
-    #
-    #         if self.filtered_df.empty:
-    #             raise ValueError("No data points in the selected range")
-    #
-    #         logging.info(f"Filter applied. Rows before: {len(self.original_df)}, after: {len(self.filtered_df)}")
-    #         self.update_plot()
-    #         QMessageBox.information(self, "Filter Applied", "Data filter applied successfully")
-    #     except ValueError as e:
-    #         logging.error(f"Error applying filter: {str(e)}")
-    #         QMessageBox.warning(self, "Filter Error", str(e))
-    #         self.filtered_df = self.original_df.copy()
-    #     except Exception as e:
-    #         logging.error(f"Unexpected error applying filter: {str(e)}")
-    #         QMessageBox.critical(self, "Error", f"An unexpected error occurred: {str(e)}")
-    #         self.filtered_df = self.original_df.copy()
-    #     finally:
-    #         self.update_ui_after_filter()
 
     def update_ui_after_load(self):
         if self.df is not None and not self.df.empty:
@@ -330,28 +282,6 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"An error occurred while exporting the table: {str(e)}")
 
-    # def update_sampling(self):
-    #     if self.filtered_df is not None and not self.filtered_df.empty:
-    #         sampling_params = self.left_panel.sampling_options.get_sampling_params()
-    #         logging.info(f"Updating sampling with params: {sampling_params}")
-    #
-    #         if sampling_params['enabled']:
-    #             sample_rate = sampling_params['sampling_rate']
-    #             sample_step = max(1, int(1 / sample_rate))
-    #             self.sampled_df = self.filtered_df.iloc[::sample_step].copy()
-    #             logging.info(
-    #                 f"Applied sampling. Original size: {len(self.filtered_df)}, Sampled size: {len(self.sampled_df)}")
-    #         else:
-    #             self.sampled_df = self.filtered_df.copy()
-    #             logging.info("Sampling disabled, using full dataset")
-    #
-    #         self.left_panel.sampling_options.update_data_info(
-    #             len(self.filtered_df),
-    #             len(self.sampled_df)
-    #         )
-    #         self.update_plot()
-    #     else:
-    #         logging.warning("No data available for sampling")
 
     def apply_data_filter(self, column, min_val, max_val):
 
@@ -374,6 +304,10 @@ class MainWindow(QMainWindow):
                 raise ValueError("No data points in the selected range")
 
             logging.info(f"Filter applied. Rows before: {len(self.original_df)}, after: {len(self.filtered_df)}")
+
+            # Applying statistics update over the applied filter
+            self.update_statistics()
+
             self.update_plot(update_filter=False)
             QMessageBox.information(self, "Filter Applied", "Data filter applied successfully")
         except ValueError as e:
@@ -410,9 +344,16 @@ class MainWindow(QMainWindow):
                                                float(min_value) if min_value else None,
                                                float(max_value) if max_value else None)
 
+                # Get the custom title from the left panel
+                custom_title = self.left_panel.get_plot_title()
+
                 logging.info(f"Updating plot with filtered data: x={x_column}, y={y_columns}")
                 self.right_panel.plot_area.plot_data(self.filtered_df, x_column, y_columns, smoothing_params,
-                                                     limit_lines)
+                                                     limit_lines, title = custom_title)
+
+                self.update_statistics()
+
+
             except Exception as e:
                 logging.error(f"Error updating plot: {str(e)}")
                 QMessageBox.critical(self, "Error", f"Failed to update plot: {str(e)}")
@@ -420,3 +361,22 @@ class MainWindow(QMainWindow):
 
         else:
             logging.warning("No data available to plot")
+            self.right_panel.plot_area.clear_plot()
+
+        self.set_unsaved_changes(True)
+
+    def update_statistics(self):
+        if self.filtered_df is not None and not self.filtered_df.empty:
+            self.right_panel.statistics_area.update_stats(self.filtered_df)
+        else:
+            logging.warning("No filtered data available to update statistics")
+
+    def setup_menu_actions(self):
+        # Connect the "New Session" action
+        self.menu_bar.connect_new_session_action(self.session_manager.new_session)
+
+    def has_unsaved_changes(self):
+        return self.unsaved_changes
+
+    def set_unsaved_changes(self, value):
+        self.unsaved_changes = value

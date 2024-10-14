@@ -39,8 +39,13 @@ class SessionManager:
                         'max_value': self.main_window.left_panel.data_filter.max_value.text(),
                         'all_columns': [self.main_window.left_panel.data_filter.filter_column.itemText(i)
                                         for i in range(self.main_window.left_panel.data_filter.filter_column.count())]
-                    }
+                    },
+                    'statistics': self.main_window.right_panel.statistics_area.get_stats(),
+                    'show_original_data': self.main_window.right_panel.plot_area.get_show_original_state(),
+                    'plot_title': self.main_window.left_panel.get_plot_title()
                 }
+
+
 
                 progress.setValue(50)
                 QCoreApplication.processEvents()
@@ -98,6 +103,14 @@ class SessionManager:
                     session_data['data_filter']['max_value']
                 )
 
+                # Load statistics
+                self.main_window.right_panel.statistics_area.set_stats(session_data['statistics'])
+
+                self.main_window.right_panel.plot_area.set_show_original_state(
+                    session_data.get('show_original_data', True))
+
+                self.main_window.left_panel.set_plot_title(session_data.get('plot_title', ''))
+
                 progress.setValue(90)
                 QCoreApplication.processEvents()
 
@@ -111,3 +124,34 @@ class SessionManager:
                                      f"An error occurred while loading the session: {str(e)}")
             finally:
                 progress.close()
+
+    def new_session(self):
+        logging.info("Initiating new session")
+        try:
+            # Check if there's unsaved data
+            if self.main_window.has_unsaved_changes():
+                logging.info("Unsaved changes detected")
+                reply = QMessageBox.question(self.main_window, 'Save Changes?',
+                                             "Do you want to save the current session before creating a new one?",
+                                             QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+
+                if reply == QMessageBox.Yes:
+                    logging.info("User chose to save changes")
+                    self.save_session()
+                elif reply == QMessageBox.Cancel:
+                    logging.info("User cancelled new session creation")
+                    return  # User cancelled, don't create a new session
+
+            # Clear everything and create a new session
+            logging.info("Clearing all data")
+            self.main_window.clear_all_data()
+            logging.info("Resetting UI")
+            self.main_window.reset_ui()
+            logging.info("Updating plot")
+            self.main_window.update_plot()
+
+            QMessageBox.information(self.main_window, "New Session", "A new session has been created.")
+            logging.info("New session created successfully")
+        except Exception as e:
+            logging.error(f"Error creating new session: {str(e)}")
+            QMessageBox.critical(self.main_window, "Error", f"An error occurred while creating a new session: {str(e)}")

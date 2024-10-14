@@ -77,3 +77,8 @@ class DataFilter(QGroupBox):
             self.filter_column.setCurrentText(column)
         self.min_value.setText(str(min_value) if min_value is not None else "")
         self.max_value.setText(str(max_value) if max_value is not None else "")
+
+    def reset(self):
+        self.filter_column.clear()
+        self.min_value.clear()
+        self.max_value.clear()

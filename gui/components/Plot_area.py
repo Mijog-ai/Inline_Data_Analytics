@@ -8,6 +8,7 @@ from utils.asc_utils import apply_smoothing
 import mplcursors
 import matplotlib.colors as mcolors
 import numpy as np
+import matplotlib.pyplot as plt
 
 class PlotArea(QWidget):
     def __init__(self, parent):
@@ -20,6 +21,9 @@ class PlotArea(QWidget):
         self.setup_ui()
         self.vertical_line = None
         self.highlight_points = []
+
+        self.original_lines = []
+        self.smoothed_lines = []
 
 
     def setup_ui(self):
@@ -41,9 +45,14 @@ class PlotArea(QWidget):
         self.highlighter_checkbox.setChecked(True)
         self.highlighter_checkbox.stateChanged.connect(self.toggle_highlighter)
 
+        self.show_original_checkbox = QCheckBox("Show Original Data")
+        self.show_original_checkbox.setChecked(True)
+        self.show_original_checkbox.stateChanged.connect(self.toggle_original_data)
+
         checkbox_layout.addWidget(self.cursor_checkbox)
         checkbox_layout.addWidget(self.legend_checkbox)
         checkbox_layout.addWidget(self.highlighter_checkbox)
+        checkbox_layout.addWidget(self.show_original_checkbox)
 
 
         self.layout.addLayout(checkbox_layout)
@@ -70,7 +79,7 @@ class PlotArea(QWidget):
         if hasattr(self, 'last_plot_params'):
             self.plot_data(**self.last_plot_params)
 
-    def plot_data(self, df, x_column, y_columns, smoothing_params, limit_lines=[]):
+    def plot_data(self, df, x_column, y_columns, smoothing_params, limit_lines=[], title=None):
         try:
             logging.info(f"Plotting data: x={x_column}, y={y_columns}")
             self.figure.clear()
@@ -78,19 +87,30 @@ class PlotArea(QWidget):
             ax = self.figure.add_subplot(111)
             axes = [ax]
 
-            base_colors = ['blue', 'red', 'green']
-            y_columns = y_columns[:3]  # Limit to max 3 Y-axes
+            # Generate a color map with distinct colors
+            n_colors = len(y_columns)
+            color_map = plt.cm.get_cmap('jet')(np.linspace(0, 1, n_colors))
+
+            self.original_lines = []
+            self.smoothed_lines = []
 
             lines = []  # Store line objects for cursor
 
-            for i, (y_column, base_color) in enumerate(zip(y_columns, base_colors)):
+            for i, (y_column, base_color) in enumerate(zip(y_columns, color_map)):
                 logging.debug(f"Plotting column: {y_column}")
                 if i > 0:
                     new_ax = ax.twinx()
-                    new_ax.spines['right'].set_visible(False)
-                    new_ax.spines['left'].set_position(('axes', -0.1 * i))
-                    new_ax.yaxis.set_label_position('left')
-                    new_ax.yaxis.set_ticks_position('left')
+                    new_ax.spines['right'].set_visible(True)
+                    if i % 2 == 0:  # Even indices (2, 4, 6, ...) go to the left side
+                        new_ax.spines['right'].set_visible(False)
+                        new_ax.spines['left'].set_position(('axes', -0.1 * (i // 2)))
+                        new_ax.yaxis.set_label_position('left')
+                        new_ax.yaxis.set_ticks_position('left')
+                    else:  # Odd indices (1, 3, 5, ...) go to the right side
+                        new_ax.spines['left'].set_visible(False)
+                        new_ax.spines['right'].set_position(('axes', 1 + 0.1 * ((i - 1) // 2)))
+                        new_ax.yaxis.set_label_position('right')
+                        new_ax.yaxis.set_ticks_position('right')
                     axes.append(new_ax)
                 else:
                     new_ax = ax
@@ -98,14 +118,16 @@ class PlotArea(QWidget):
                 x_data = df[x_column]
                 y_data = df[y_column]
 
+                # Set the opacity based on whether smoothing is applied
                 if smoothing_params['apply']:
                     original_color = mcolors.to_rgba(base_color, alpha=0.3)
                     smoothed_color = mcolors.to_rgba(base_color, alpha=1.0)
                 else:
-                    original_color = base_color
+                    original_color = mcolors.to_rgba(base_color, alpha=1.0)
 
-                line, = new_ax.plot(x_data, y_data, color=original_color, label=y_column)
-                lines.append(line)
+                original_line, = new_ax.plot(x_data, y_data, color=original_color, label=f'{y_column} (Original)')
+                self.original_lines.append(original_line)
+                lines.append(original_line)
 
                 if smoothing_params['apply']:
                     logging.debug(f"Applying smoothing: {smoothing_params}")
@@ -116,8 +138,10 @@ class PlotArea(QWidget):
                         poly_order=smoothing_params['poly_order'],
                         sigma=smoothing_params['sigma']
                     )
-                    smooth_line, = new_ax.plot(x_data, y_smoothed, color=smoothed_color, label=f'{y_column} (Smoothed)')
-                    lines.append(smooth_line)
+                    smoothed_line, = new_ax.plot(x_data, y_smoothed, color=smoothed_color,
+                                                 label=f'{y_column} (Smoothed)')
+                    self.smoothed_lines.append(smoothed_line)
+                    lines.append(smoothed_line)
 
                 new_ax.set_ylabel(y_column, color=base_color)
                 new_ax.tick_params(axis='y', colors=base_color)
@@ -125,14 +149,19 @@ class PlotArea(QWidget):
                     new_ax.legend(loc='upper left')
 
             ax.set_xlabel(x_column)
-            ax.set_title('Multi-column plot')
+            if title:
+                ax.set_title(title)
+            else:
+                ax.set_title('Multi-column plot')
 
             # Add limit lines
             for line in limit_lines:
                 if line['type'] == 'vertical':
-                    ax.axvline(x=line['value'], color='black', linestyle='--', label=f'Vertical Line at x={line["value"]}')
+                    ax.axvline(x=line['value'], color='black', linestyle='--',
+                               label=f'Vertical Line at x={line["value"]}')
                 else:
-                    ax.axhline(y=line['value'], color='black', linestyle='--', label=f'Horizontal Line at y={line["value"]}')
+                    ax.axhline(y=line['value'], color='black', linestyle='--',
+                               label=f'Horizontal Line at y={line["value"]}')
 
             self.figure.tight_layout()
 
@@ -148,15 +177,21 @@ class PlotArea(QWidget):
                     ylabel = ax.get_ylabel()
                     sel.annotation.set_text(f"{xlabel}: {x:.2f}\n{ylabel}: {y:.2f}")
                     sel.annotation.get_bbox_patch().set(fc="white", alpha=0.8)
-
-
             else:
-                if self.cursor:
+                if hasattr(self, 'cursor') and self.cursor:
                     self.cursor.remove()
                     self.cursor = None
 
             if self.yaxis_approx_value_highlighter:
                 self.canvas.mpl_connect('button_press_event', self.on_click)
+
+            # Apply the current state of the show_original_checkbox only if smoothing is applied
+            if smoothing_params['apply']:
+                self.toggle_original_data()
+            else:
+                # If smoothing is not applied, ensure all original lines are visible
+                for line in self.original_lines:
+                    line.set_visible(True)
 
             self.canvas.draw()
             logging.info("Plot completed successfully")
@@ -167,13 +202,15 @@ class PlotArea(QWidget):
                 'x_column': x_column,
                 'y_columns': y_columns,
                 'smoothing_params': smoothing_params,
-                'limit_lines': limit_lines
+                'limit_lines': limit_lines,
+                'title': title
             }
 
         except Exception as e:
             logging.error(f"Error in plot_data: {str(e)}")
             logging.error(traceback.format_exc())
             QMessageBox.critical(self, "Error", f"An error occurred while plotting: {str(e)}")
+
 
     def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type):
         try:
@@ -197,6 +234,10 @@ class PlotArea(QWidget):
             ax.set_title(f'Data with {fit_type} Fit')
             ax.set_xlabel('X')
             ax.set_ylabel('Y')
+
+
+            # Toggeling original data on smoothing
+            self.toggle_original_data()
 
             self.canvas.draw()
             logging.info(f"{fit_type} curve fitting applied to plot successfully")
@@ -233,4 +274,28 @@ class PlotArea(QWidget):
                 highlight = ax.plot(xdata[index], ydata[index], 'o', color='red', markersize=8)[0]
                 self.highlight_points.append(highlight)
 
+        self.canvas.draw()
+
+    def toggle_original_data(self):
+        show_original = self.show_original_checkbox.isChecked()
+        logging.info(f"Toggling original data visibility: {show_original}")
+        for line in self.original_lines:
+            line.set_visible(show_original)
+        self.canvas.draw_idle()  # Use draw_idle() instead of draw() for better performance
+        logging.info("Original data visibility toggled")
+
+    def get_show_original_state(self):
+        return self.show_original_checkbox.isChecked()
+
+    def set_show_original_state(self, state):
+        self.show_original_checkbox.setChecked(state)
+        self.toggle_original_data()
+
+    def clear_plot(self):
+        logging.info("Clearing plot in PlotArea")
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        ax.set_title("No data to display")
+        ax.set_xlabel("X-axis")
+        ax.set_ylabel("Y-axis")
         self.canvas.draw()
