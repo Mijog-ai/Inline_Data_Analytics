@@ -33,6 +33,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self.session_manager = SessionManager(self)
+        self.current_file = None
 
     def setup_menu_bar(self):
         self.menu_bar = MenuBar(self)
@@ -100,6 +101,10 @@ class MainWindow(QMainWindow):
                 self.original_df = self.df.copy()
                 self.filtered_df = self.df.copy()
                 self.update_ui_after_load()
+
+
+                self.current_file = file_path
+                self.tool_bar.update_file_name(self.current_file)
                 logging.info(f"File loaded successfully. Shape: {self.df.shape}")
                 QMessageBox.information(self, "Success", "File loaded successfully!")
             except Exception as e:
@@ -172,7 +177,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No data to save. Please load a file first.")
             return
 
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Data", "", "CSV Files (*.csv);;Excel Files (*.xlsx)")
+        default_name = os.path.splitext(os.path.basename(self.current_file))[0] if self.current_file else "data"
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save Data",default_name, "CSV Files (*.csv);;Excel Files (*.xlsx)")
         if file_name:
             try:
                 if file_name.endswith('.csv'):
@@ -188,7 +194,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No plot to save. Please create a plot first.")
             return
 
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Plot", "", "PNG Files (*.png);;PDF Files (*.pdf)")
+        default_name = os.path.splitext(os.path.basename(self.current_file))[0] if self.current_file else "plot"
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save Plot", default_name, "PNG Files (*.png);;PDF Files (*.pdf)")
         if file_name:
             try:
                 fig = self.right_panel.plot_area.figure
@@ -209,10 +216,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No data to export. Please load a file first.")
             return
 
-        file_name, _ = QFileDialog.getSaveFileName(self, "Export Table to Excel", "", "Excel Files (*.xlsx)")
+        default_name = os.path.splitext(os.path.basename(self.current_file))[0] if self.current_file else "data"
+        file_name, _ = QFileDialog.getSaveFileName(self, "Export Table to Excel", default_name, "Excel Files (*.xlsx)")
         if file_name:
             try:
-                with pd.ExcelWriter(file_name) as writer:
+                with pd.ExcelWriter(file_name, engine='openpyxl') as writer:
                     # Write the main data
                     self.df.to_excel(writer, sheet_name='Data', index=False)
 
@@ -240,7 +248,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Success", "Table exported to Excel successfully!")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"An error occurred while exporting the table: {str(e)}")
-
 
     def apply_data_filter(self, column, min_val, max_val):
 

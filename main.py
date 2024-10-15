@@ -1,8 +1,6 @@
-import sys
 from PyQt5.QtWidgets import QApplication
 from gui.main_window import MainWindow
 import logging
-
 
 def setup_logging():
     logging.basicConfig(level=logging.DEBUG,
