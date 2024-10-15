@@ -65,7 +65,6 @@ class MainWindow(QMainWindow):
         self.left_panel.data_filter.reset()
         self.left_panel.curve_fitting.reset()
         self.left_panel.comment_box.clear()
-        self.left_panel.set_plot_title("")
 
         # Reset RightPanel
         self.right_panel.plot_area.clear_plot()
@@ -111,7 +110,8 @@ class MainWindow(QMainWindow):
 
 
     def setup_edit_actions(self):
-        self.show_limit_lines_action = QAction("Show Limit Lines", self, checkable=True)
+        self.show_limit_lines_action = (QAction
+                                        ("Show Limit Lines", self, checkable=True))
         self.show_limit_lines_action.triggered.connect(self.toggle_limit_lines)
 
         self.show_smoothing_options_action = QAction('Smoothing_options', self, checkable=True)
@@ -148,8 +148,6 @@ class MainWindow(QMainWindow):
     def toggle_curve_fitting(self, checked):
         self.left_panel.curve_fitting.setVisible(checked)
 
-    def new_session(self):
-        pass
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
@@ -305,15 +303,10 @@ class MainWindow(QMainWindow):
                                                float(min_value) if min_value else None,
                                                float(max_value) if max_value else None)
 
-                # Get the custom title from the left panel
-                custom_title = self.left_panel.get_plot_title()
-
-                logging.info(f"Updating plot with filtered data: x={x_column}, y={y_columns}, title={custom_title}")
                 self.right_panel.plot_area.plot_data(self.filtered_df, x_column, y_columns, smoothing_params,
-                                                     limit_lines, title=custom_title)
-
+                                                     limit_lines)
                 self.update_statistics()
-
+                self.unsaved_changes = True
 
             except Exception as e:
                 logging.error(f"Error updating plot: {str(e)}")
@@ -323,7 +316,7 @@ class MainWindow(QMainWindow):
         else:
             logging.warning("No data available to plot")
 
-        self.unsaved_changes = True
+
 
     def update_statistics(self):
         if self.filtered_df is not None and not self.filtered_df.empty:
@@ -332,12 +325,10 @@ class MainWindow(QMainWindow):
             logging.warning("No filtered data available to update statistics")
 
     def setup_connections(self):
-        # Connect the title_changed signal to on_title_changed method
-        self.left_panel.title_changed.connect(self.on_title_changed)
+        # Connect the plot button to the PlotArea's update_plot method
+        self.left_panel.axis_selection.plot_button.clicked.connect(self.update_plot)
 
-    def on_title_changed(self, new_title):
-        logging.debug(f"Title change received in MainWindow: {new_title}")
-        try:
-            self.update_plot(update_filter=False)
-        except Exception as e:
-            logging.error(f"Error updating plot after title change: {str(e)}")
+    def update_plot_title(self, title):
+        if self.right_panel.plot_area.last_plot_params:
+            self.right_panel.plot_area.last_plot_params['title'] = title
+            self.update_plot()

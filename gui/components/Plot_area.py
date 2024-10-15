@@ -1,6 +1,6 @@
 import logging
 import traceback
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QCheckBox, QHBoxLayout
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QCheckBox, QHBoxLayout, QLabel, QLineEdit
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -24,9 +24,22 @@ class PlotArea(QWidget):
 
         self.original_lines = []
         self.smoothed_lines = []
-
+        self.current_title = ""
 
     def setup_ui(self):
+
+        # Add title input
+        title_layout = QHBoxLayout()
+        title_label = QLabel("Plot Title:")
+        self.title_input = QLineEdit()
+        self.title_input.setPlaceholderText("Enter plot title")
+        self.title_input.textChanged.connect(self.update_title)
+        title_layout.addWidget(title_label)
+        title_layout.addWidget(self.title_input)
+        self.layout.addLayout(title_layout)
+
+
+
         self.figure = Figure(figsize=(5, 4), dpi=100)
         self.canvas = FigureCanvas(self.figure)
         self.toolbar = NavigationToolbar(self.canvas, self)
@@ -81,6 +94,10 @@ class PlotArea(QWidget):
 
     def plot_data(self, df, x_column, y_columns, smoothing_params, limit_lines=[], title=None):
         try:
+            if title is not None:
+                self.current_title = title
+            else:
+                title = self.current_title
             logging.info(f"Plotting data: x={x_column}, y={y_columns}, title= {title}")
             self.figure.clear()
 
@@ -149,10 +166,7 @@ class PlotArea(QWidget):
                     new_ax.legend(loc='upper left')
 
             ax.set_xlabel(x_column)
-            if title:
-                ax.set_title(title)
-            else:
-                ax.set_title('Multi-column plot')
+            ax.set_title(title)
 
             # Add limit lines
             for line in limit_lines:
@@ -276,6 +290,12 @@ class PlotArea(QWidget):
 
         self.canvas.draw()
 
+    def update_title(self, title):
+        self.current_title = title
+        if hasattr(self, 'last_plot_params'):
+            self.last_plot_params['title'] = title
+            self.update_plot()
+
     def toggle_original_data(self):
         show_original = self.show_original_checkbox.isChecked()
         logging.info(f"Toggling original data visibility: {show_original}")
@@ -299,3 +319,15 @@ class PlotArea(QWidget):
         ax.set_xlabel("X-axis")
         ax.set_ylabel("Y-axis")
         self.canvas.draw()
+        self.reset_title()
+
+    def reset_title(self):
+        self.current_title = ""
+        self.title_input.clear()  # Clear the title input field
+        if hasattr(self, 'last_plot_params'):
+            self.last_plot_params['title'] = ""
+
+        # Clear the plot title if there's an existing plot
+        if hasattr(self, 'figure') and self.figure.axes:
+            self.figure.axes[0].set_title("")
+            self.canvas.draw()

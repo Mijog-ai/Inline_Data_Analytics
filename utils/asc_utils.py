@@ -3,6 +3,10 @@ import numpy as np
 from scipy.signal import savgol_filter
 from scipy.ndimage import gaussian_filter1d
 from nptdms import TdmsFile
+import logging
+import io
+import chardet
+
 
 def load_and_process_asc_file(file_name):
     with open(file_name, 'r') as file:
@@ -40,6 +44,7 @@ def load_and_process_asc_file(file_name):
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
     return df
+
 
 def load_and_process_csv_file(file_name):
     return pd.read_csv(file_name)

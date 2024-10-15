@@ -35,15 +35,7 @@ class LeftPanel(QWidget):
         self.layout.addWidget(self.comment_box)
         self.layout.addStretch(1)
 
-        # Add title input
-        title_layout = QHBoxLayout()
-        title_label = QLabel("Plot Title:")
-        self.title_input = QLineEdit()
-        self.title_input.setPlaceholderText("Enter plot title")
-        self.title_input.textChanged.connect(self.on_title_changed)
-        title_layout.addWidget(title_label)
-        title_layout.addWidget(self.title_input)
-        self.layout.addLayout(title_layout)
+
 
         # Initialize components as hidden
         self.smoothing_options.hide()
@@ -59,16 +51,5 @@ class LeftPanel(QWidget):
         self.axis_selection.update_options(columns)
         self.data_filter.update_columns(columns)
 
-    def on_title_changed(self, text):
-        logging.debug(f"Title changed to: {text}")
-        try:
-            self.title_changed.emit(text)
-        except Exception as e:
-            logging.error(f"Error emitting title_changed signal: {str(e)}")
 
-    def get_plot_title(self):
-        return self.title_input.text()
-
-    def set_plot_title(self, title):
-        self.title_input.setText(title)
 
