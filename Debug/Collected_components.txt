@@ -1,0 +1,983 @@
+--- axis_selection.py ---
+from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QHBoxLayout, QComboBox, QListWidget, QPushButton, QColorDialog, QWidget, QLabel, QListWidgetItem
+from PyQt5.QtGui import QColor
+from PyQt5.QtCore import Qt, pyqtSignal
+
+class ColorButton(QPushButton):
+    colorChanged = pyqtSignal(str, QColor)
+
+    def __init__(self, column, color=Qt.blue):
+        super().__init__()
+        self.column = column
+        self.setFixedSize(20, 20)
+        self.color = QColor(color)
+        self.setStyleSheet(f"background-color: {self.color.name()};")
+        self.clicked.connect(self.choose_color)
+
+    def choose_color(self):
+        color = QColorDialog.getColor(self.color)
+        if color.isValid():
+            self.color = color
+            self.setStyleSheet(f"background-color: {self.color.name()};")
+            self.colorChanged.emit(self.column, self.color)
+
+class AxisSelection(QGroupBox):
+    colorSelected = pyqtSignal()
+
+    def __init__(self, parent):
+        super().__init__("Axis Selection", parent)
+        self.layout = QVBoxLayout()
+        self.colors = {}
+        self.color_buttons = {}
+        self.setup_ui()
+
+    def setup_ui(self):
+        x_layout = QHBoxLayout()
+        x_layout.addWidget(QLabel("X-axis:"))
+        self.x_combo = QComboBox()
+        x_layout.addWidget(self.x_combo)
+        self.layout.addLayout(x_layout)
+
+        y_layout = QVBoxLayout()
+        y_layout.addWidget(QLabel("Y-axis (select multiple):"))
+        self.y_list = QListWidget()
+        self.y_list.setSelectionMode(QListWidget.MultiSelection)
+        y_layout.addWidget(self.y_list)
+        self.layout.addLayout(y_layout)
+
+        self.plot_button = QPushButton("Plot")
+        self.plot_button.clicked.connect(self.on_plot_clicked)  # Add this line
+        self.layout.addWidget(self.plot_button)
+
+        self.setLayout(self.layout)
+
+    def update_options(self, columns):
+        self.x_combo.clear()
+        self.y_list.clear()
+        self.colors.clear()
+        self.color_buttons.clear()
+
+        self.x_combo.addItems(columns)
+        for column in columns:
+            item_widget = QWidget()
+            item_layout = QHBoxLayout(item_widget)
+            item_layout.setContentsMargins(5, 2, 5, 2)
+            item_layout.setSpacing(10)
+
+            label = QLabel(column)
+            color_button = ColorButton(column)
+            color_button.colorChanged.connect(self.update_color)
+            self.color_buttons[column] = color_button
+
+            item_layout.addWidget(label)
+            item_layout.addWidget(color_button)
+            item_layout.addStretch()
+
+            item = QListWidgetItem(self.y_list)
+            item.setSizeHint(item_widget.sizeHint())
+            self.y_list.addItem(item)
+            self.y_list.setItemWidget(item, item_widget)
+
+            self.colors[column] = QColor(Qt.blue)  # Default color
+
+    def update_color(self, column, color):
+        self.colors[column] = color
+        self.colorSelected.emit()
+
+    def get_color(self, column):
+        return self.colors.get(column, QColor(Qt.blue))
+
+    def get_selected_columns(self):
+        return [self.y_list.itemWidget(self.y_list.item(i)).findChild(QLabel).text()
+                for i in range(self.y_list.count())
+                if self.y_list.item(i).isSelected()]
+
+    def on_plot_clicked(self):
+        print("Plot button clicked")  # Add this method
+        logging.info("Plot button clicked")
+
+--- comment_box.py ---
+from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QTextEdit
+
+class CommentBox(QGroupBox):
+    def __init__(self, parent):
+        super().__init__("Comments", parent)
+        self.layout = QVBoxLayout()
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.comment_box = QTextEdit()
+        self.layout.addWidget(self.comment_box)
+
+        self.setLayout(self.layout)
+
+    def get_comments(self):
+        return self.comment_box.toPlainText()
+
+    def set_comments(self, comments):
+        self.comment_box.setPlainText(comments)
+
+    def clear(self):
+        self.comment_box.clear()
+
+--- curve_fitting.py ---
+# curve_fitting.py
+
+from PyQt5.QtWidgets import QGroupBox, QFormLayout, QPushButton, QMessageBox, QComboBox
+import numpy as np
+from scipy import stats
+from scipy.optimize import curve_fit
+import logging
+
+
+class CurveFitting(QGroupBox):
+    def __init__(self, parent):
+        super().__init__("Curve Fitting", parent)
+        self.layout = QFormLayout()
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.fit_type = QComboBox()
+        self.fit_type.addItems(['Linear', 'Quadratic', 'Exponential'])
+        self.layout.addRow("Fit Type:", self.fit_type)
+
+        self.apply_fit_button = QPushButton("Apply Fit")
+        self.apply_fit_button.clicked.connect(self.apply_fit)
+        self.layout.addRow(self.apply_fit_button)
+
+        self.setLayout(self.layout)
+
+    def apply_fit(self):
+        logging.info("Starting curve fitting process")
+        main_window = self.window()
+
+        try:
+            # Check if data is available
+            if main_window.filtered_df is None or main_window.filtered_df.empty:
+                raise ValueError("No data available for fitting")
+
+            # Get selected columns
+            x_column = main_window.left_panel.axis_selection.x_combo.currentText()
+            y_items = main_window.left_panel.axis_selection.y_list.selectedItems()
+
+            if not y_items:
+                raise ValueError("No Y-axis selected")
+
+            y_column = y_items[0].text()
+
+            logging.info(f"Selected columns - X: {x_column}, Y: {y_column}")
+
+            # Get data
+            x_data = main_window.filtered_df[x_column].values
+            y_data = main_window.filtered_df[y_column].values
+
+            # Remove any NaN or infinite values
+            mask = np.isfinite(x_data) & np.isfinite(y_data)
+            x_data = x_data[mask]
+            y_data = y_data[mask]
+
+            if len(x_data) == 0 or len(y_data) == 0:
+                raise ValueError("No valid data points for fitting after removing NaN/inf values")
+
+            fit_type = self.fit_type.currentText()
+
+            if fit_type == 'Linear':
+                slope, intercept, r_value, p_value, std_err = stats.linregress(x_data, y_data)
+                fit_func = lambda x: slope * x + intercept
+                equation = f"y = {slope:.4f}x + {intercept:.4f}"
+                r_squared = r_value ** 2
+            elif fit_type == 'Quadratic':
+                popt, _ = curve_fit(self.quadratic_func, x_data, y_data)
+                fit_func = lambda x: self.quadratic_func(x, *popt)
+                equation = f"y = {popt[0]:.4f}x^2 + {popt[1]:.4f}x + {popt[2]:.4f}"
+                r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
+            elif fit_type == 'Exponential':
+                popt, _ = curve_fit(self.exponential_func, x_data, y_data, p0=[1, 0.1])
+                fit_func = lambda x: self.exponential_func(x, *popt)
+                equation = f"y = {popt[0]:.4f} * e^({popt[1]:.4f}x)"
+                r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
+
+            logging.info(f"{fit_type} fit successful. Equation: {equation}")
+
+            # Plot the results
+            main_window.right_panel.plot_area.apply_curve_fitting(x_data, y_data, fit_func, equation, fit_type)
+
+            QMessageBox.information(self, "Fit Applied",
+                                    f"Applied {fit_type} fit:\n{equation}\nR-squared: {r_squared:.4f}")
+
+        except Exception as e:
+            logging.exception(f"Error during curve fitting: {str(e)}")
+            QMessageBox.warning(self, "Fit Error", f"Error applying fit: {str(e)}")
+
+    @staticmethod
+    def quadratic_func(x, a, b, c):
+        return a * x ** 2 + b * x + c
+
+    @staticmethod
+    def exponential_func(x, a, b):
+        return a * np.exp(b * x)
+
+    @staticmethod
+    def calculate_r_squared(y_true, y_pred):
+        ss_res = np.sum((y_true - y_pred) ** 2)
+        ss_tot = np.sum((y_true - np.mean(y_true))==2)
+        return 1-(ss_res/ss_tot)
+
+    def reset(self):
+        self.fit_type.setCurrentIndex(0)
+
+--- data_filter.py ---
+from PyQt5.QtWidgets import QGroupBox, QFormLayout, QComboBox, QLineEdit, QPushButton, QMessageBox, QMainWindow
+import logging
+
+
+class DataFilter(QGroupBox):
+    def __init__(self, parent):
+        super().__init__("Data Filter", parent)
+        self.layout = QFormLayout()
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.filter_column = QComboBox()
+        self.layout.addRow("Column:", self.filter_column)
+
+        self.min_value = QLineEdit()
+        self.layout.addRow("Min Value:", self.min_value)
+
+        self.max_value = QLineEdit()
+        self.layout.addRow("Max Value:", self.max_value)
+
+        self.apply_filter_button = QPushButton("Apply Filter")
+        self.apply_filter_button.clicked.connect(self.apply_filter)
+        self.layout.addRow(self.apply_filter_button)
+
+        self.setLayout(self.layout)
+
+    def update_columns(self, columns):
+        current_text = self.filter_column.currentText()
+        self.filter_column.clear()
+        self.filter_column.addItems(columns)
+        if current_text in columns:
+            self.filter_column.setCurrentText(current_text)
+
+    def apply_filter(self):
+        try:
+            main_window = self.get_main_window()
+            if not main_window:
+                raise Exception("Could not find MainWindow")
+
+            column = self.filter_column.currentText()
+            min_val = float(self.min_value.text()) if self.min_value.text() else None
+            max_val = float(self.max_value.text()) if self.max_value.text() else None
+
+            logging.info(f"Applying filter on column: {column}, min: {min_val}, max: {max_val}")
+
+            if not column:
+                raise ValueError("Please select a column to filter")
+
+            if not min_val and not max_val:
+                raise ValueError("Please enter at least one filter value")
+
+            min_val = float(min_val) if min_val else None
+            max_val = float(max_val) if max_val else None
+
+            if min_val is not None and max_val is not None and min_val > max_val:
+                raise ValueError("Min value must be less than or equal to Max value")
+
+            main_window.apply_data_filter(column, min_val, max_val)
+        except ValueError as e:
+            logging.error(f"Invalid input in DataFilter: {str(e)}")
+            QMessageBox.warning(self, "Invalid Input", str(e))
+        except Exception as e:
+            logging.error(f"Unexpected error in DataFilter: {str(e)}")
+            QMessageBox.critical(self, "Error", f"An unexpected error occurred: {str(e)}")
+
+    def get_main_window(self):
+        parent = self.parent()
+        while parent is not None:
+            if isinstance(parent, QMainWindow):
+                return parent
+            parent = parent.parent()
+        return None
+
+
+    def set_filter(self, column, min_value, max_value):
+        if column in [self.filter_column.itemText(i) for i in range(self.filter_column.count())]:
+            self.filter_column.setCurrentText(column)
+        self.min_value.setText(str(min_value) if min_value is not None else "")
+        self.max_value.setText(str(max_value) if max_value is not None else "")
+
+    def reset(self):
+        self.filter_column.clear()
+        self.min_value.clear()
+        self.max_value.clear()
+
+--- limit_lines.py ---
+from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QPushButton, QInputDialog, QMessageBox
+import logging
+
+class LimitLines(QGroupBox):
+    def __init__(self, parent):
+        super().__init__("Limit Lines", parent)
+        self.layout = QVBoxLayout()
+        self.limit_lines = []
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.add_vline_button = QPushButton("Add Vertical Line")
+        self.add_vline_button.clicked.connect(lambda: self.add_limit_line('vertical'))
+        self.layout.addWidget(self.add_vline_button)
+
+        self.add_hline_button = QPushButton("Add Horizontal Line")
+        self.add_hline_button.clicked.connect(lambda: self.add_limit_line('horizontal'))
+        self.layout.addWidget(self.add_hline_button)
+
+        self.clear_lines_button = QPushButton("Clear All Lines")
+        self.clear_lines_button.clicked.connect(self.clear_limit_lines)
+        self.layout.addWidget(self.clear_lines_button)
+
+        self.setLayout(self.layout)
+
+    def add_limit_line(self, line_type):
+        value, ok = QInputDialog.getDouble(self, f"Add {line_type.capitalize()} Line", "Enter value:")
+        if ok:
+            self.limit_lines.append({'type': line_type, 'value': value})
+            self.update_plot()
+            logging.info(f"Added {line_type} limit line at {value}")
+
+    def clear_limit_lines(self):
+        self.limit_lines.clear()
+        self.update_plot()
+        logging.info("Cleared all limit lines")
+
+    def get_limit_lines(self):
+        return self.limit_lines
+
+    def update_plot(self):
+        main_window = self.window()
+        if hasattr(main_window, 'update_plot'):
+            main_window.update_plot()
+        else:
+            QMessageBox.warning(self, "Error", "Unable to update plot")
+
+    def set_limit_lines(self, limit_lines):
+        self.limit_lines = limit_lines
+
+    def clear_lines(self):
+        self.limit_lines = []
+
+--- Plot_area.py ---
+import logging
+import traceback
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QCheckBox, QHBoxLayout, QLabel, QLineEdit, QPushButton
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
+from utils.asc_utils import apply_smoothing
+import mplcursors
+import matplotlib.colors as mcolors
+import numpy as np
+import matplotlib.pyplot as plt
+
+class PlotArea(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.layout = QVBoxLayout(self)
+        self.cursor = None
+        self.show_cursor = True
+        self.show_legend = True
+        self.yaxis_approx_value_highlighter = True
+        self.setup_ui()
+        self.vertical_line = None
+        self.highlight_points = []
+
+        self.original_lines = []
+        self.smoothed_lines = []
+        self.current_title = ""
+
+    def setup_ui(self):
+
+        # Add title input and button
+        title_layout = QHBoxLayout()
+        self.title_input = QLineEdit()
+        self.title_input.setPlaceholderText("Enter plot title")
+        self.title_button = QPushButton("Set Title")
+        self.title_button.clicked.connect(self.update_title)
+        title_layout.addWidget(self.title_input)
+        title_layout.addWidget(self.title_button)
+        self.layout.addLayout(title_layout)
+
+
+
+        self.figure = Figure(figsize=(5, 4), dpi=100)
+        self.canvas = FigureCanvas(self.figure)
+        self.toolbar = NavigationToolbar(self.canvas, self)
+
+        # Add checkboxes for cursor and legend toggle
+        checkbox_layout = QHBoxLayout()
+        self.cursor_checkbox = QCheckBox("Show Cursor")
+        self.cursor_checkbox.setChecked(True)
+        self.cursor_checkbox.stateChanged.connect(self.toggle_cursor)
+
+        self.legend_checkbox = QCheckBox("Show Legend")
+        self.legend_checkbox.setChecked(True)
+        self.legend_checkbox.stateChanged.connect(self.toggle_legend)
+
+        self.highlighter_checkbox = QCheckBox("Highlight yaxis_values")
+        self.highlighter_checkbox.setChecked(True)
+        self.highlighter_checkbox.stateChanged.connect(self.toggle_highlighter)
+
+        self.show_original_checkbox = QCheckBox("Show Original Data")
+        self.show_original_checkbox.setChecked(True)
+        self.show_original_checkbox.stateChanged.connect(self.toggle_original_data)
+
+        checkbox_layout.addWidget(self.cursor_checkbox)
+        checkbox_layout.addWidget(self.legend_checkbox)
+        checkbox_layout.addWidget(self.highlighter_checkbox)
+        checkbox_layout.addWidget(self.show_original_checkbox)
+
+
+        self.layout.addLayout(checkbox_layout)
+        self.layout.addWidget(self.toolbar)
+        self.layout.addWidget(self.canvas)
+
+        self.setLayout(self.layout)
+
+    def toggle_highlighter(self,state):
+        self.yaxis_approx_value_highlighter = bool(state)
+        self.update_plot()
+
+    def toggle_cursor(self, state):
+        self.show_cursor = bool(state)
+        self.update_plot()
+
+    def toggle_legend(self, state):
+        self.show_legend = bool(state)
+        self.update_plot()
+
+    def update_plot(self):
+        # This method should be called whenever the plot needs to be updated
+        # It will use the current state of show_cursor and show_legend
+        if hasattr(self, 'last_plot_params'):
+            self.plot_data(**self.last_plot_params)
+
+    def plot_data(self, df, x_column, y_columns, smoothing_params, limit_lines=[], title=None):
+        try:
+            if title is not None:
+                self.current_title = title
+            else:
+                title = self.current_title
+            logging.info(f"Plotting data: x={x_column}, y={y_columns}, title={title}")
+            self.figure.clear()
+
+            ax = self.figure.add_subplot(111)
+            axes = [ax]
+
+            self.original_lines = []
+            self.smoothed_lines = []
+
+            lines = []  # Store line objects for cursor
+            first_ax = None
+            for i, y_column in enumerate(y_columns):
+                logging.debug(f"Plotting column: {y_column}")
+                if i == 0:
+                    new_ax = ax
+                    first_ax = new_ax
+                if i > 0:
+                    y_min, y_max = new_ax.get_ylim()
+                    scale = (first_ax.get_ylim()[1] - first_ax.get_ylim()[0]) / (y_max - y_min)
+                    new_ax.set_ylim(y_min * scale, y_max * scale)
+
+                    new_ax = ax.twinx()
+                    new_ax.spines['right'].set_visible(True)
+                    if i % 2 == 0:  # Even indices (2, 4, 6, ...) go to the left side
+                        new_ax.spines['right'].set_visible(False)
+                        new_ax.spines['left'].set_position(('axes', -0.1 * (i // 2)))
+                        new_ax.yaxis.set_label_position('left')
+                        new_ax.yaxis.set_ticks_position('left')
+                    else:  # Odd indices (1, 3, 5, ...) go to the right side
+                        new_ax.spines['left'].set_visible(False)
+                        new_ax.spines['right'].set_position(('axes', 1 + 0.1 * ((i - 1) // 2)))
+                        new_ax.yaxis.set_label_position('right')
+                        new_ax.yaxis.set_ticks_position('right')
+                    axes.append(new_ax)
+                else:
+                    new_ax = ax
+
+                new_ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.2f}"))
+
+                x_data = df[x_column]
+                y_data = df[y_column]
+
+                color = self.parent().parent().left_panel.axis_selection.get_color(y_column)
+                base_color = color.name()
+                # Set the opacity based on whether smoothing is applied
+                if smoothing_params['apply']:
+                    original_color = mcolors.to_rgba(base_color, alpha=0.3)
+                    smoothed_color = mcolors.to_rgba(base_color, alpha=1.0)
+                else:
+                    original_color = mcolors.to_rgba(base_color, alpha=1.0)
+
+                original_line, = new_ax.plot(x_data, y_data, color=original_color, label=f'{y_column} (Original)')
+                self.original_lines.append(original_line)
+                lines.append(original_line)
+
+                if smoothing_params['apply']:
+                    logging.debug(f"Applying smoothing: {smoothing_params}")
+                    y_smoothed = apply_smoothing(
+                        y_data,
+                        method=smoothing_params['method'],
+                        window_length=smoothing_params['window_length'],
+                        poly_order=smoothing_params['poly_order'],
+                        sigma=smoothing_params['sigma']
+                    )
+                    smoothed_line, = new_ax.plot(x_data, y_smoothed, color=smoothed_color,
+                                                 label=f'{y_column} (Smoothed)')
+                    self.smoothed_lines.append(smoothed_line)
+                    lines.append(smoothed_line)
+
+                new_ax.set_ylabel(y_column, color=base_color)
+                new_ax.tick_params(axis='y', colors=base_color)
+                if self.show_legend:
+                    new_ax.legend(loc='upper left')
+
+            ax.set_xlabel(x_column)
+            ax.set_title(title)
+
+            # Add limit lines
+            for line in limit_lines:
+                if line['type'] == 'vertical':
+                    ax.axvline(x=line['value'], color='black', linestyle='--',
+                               label=f'Vertical Line at x={line["value"]}')
+                else:
+                    ax.axhline(y=line['value'], color='black', linestyle='--',
+                               label=f'Horizontal Line at y={line["value"]}')
+
+            self.figure.tight_layout()
+
+            # Add snapping cursor if enabled
+            if self.show_cursor:
+                self.cursor = mplcursors.cursor(lines, hover=True)
+
+                @self.cursor.connect("add")
+                def on_add(sel):
+                    x, y = sel.target
+                    ax = sel.artist.axes
+                    xlabel = ax.get_xlabel()
+                    ylabel = ax.get_ylabel()
+                    sel.annotation.set_text(f"{xlabel}: {x:.2f}\n{ylabel}: {y:.2f}")
+                    sel.annotation.get_bbox_patch().set(fc="white", alpha=0.8)
+            else:
+                if hasattr(self, 'cursor') and self.cursor:
+                    self.cursor.remove()
+                    self.cursor = None
+
+            if self.yaxis_approx_value_highlighter:
+                self.canvas.mpl_connect('button_press_event', self.on_click)
+
+            # Apply the current state of the show_original_checkbox only if smoothing is applied
+            if smoothing_params['apply']:
+                self.toggle_original_data()
+            else:
+                # If smoothing is not applied, ensure all original lines are visible
+                for line in self.original_lines:
+                    line.set_visible(True)
+
+            self.canvas.draw()
+            logging.info("Plot completed successfully")
+
+            # Store the last plot parameters for later updates
+            self.last_plot_params = {
+                'df': df,
+                'x_column': x_column,
+                'y_columns': y_columns,
+                'smoothing_params': smoothing_params,
+                'limit_lines': limit_lines,
+                'title': title
+            }
+
+        except Exception as e:
+            logging.error(f"Error in plot_data: {str(e)}")
+            logging.error(traceback.format_exc())
+            QMessageBox.critical(self, "Error", f"An error occurred while plotting: {str(e)}")
+
+
+    def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type):
+        try:
+            logging.info(f"Applying {fit_type} curve fitting to plot")
+            ax = self.figure.gca()
+
+            # Clear previous plots
+            ax.clear()
+
+            # Plot the original data
+            ax.plot(x_data, y_data, 'b-', label='Original Data')
+
+            # Generate points for the fitted curve
+            x_fit = np.linspace(np.min(x_data), np.max(x_data), 500)
+            y_fit = fit_func(x_fit)
+
+            # Plot the fitted curve
+            ax.plot(x_fit, y_fit, 'r-', label=f'Fitted Curve: {equation}')
+
+            ax.legend()
+            ax.set_title(f'Data with {fit_type} Fit')
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+
+
+            # Toggeling original data on smoothing
+            self.toggle_original_data()
+
+            self.canvas.draw()
+            logging.info(f"{fit_type} curve fitting applied to plot successfully")
+        except Exception as e:
+            logging.error(f"Error in apply_curve_fitting: {str(e)}")
+            logging.error(traceback.format_exc())
+            QMessageBox.critical(self, "Error", f"An error occurred while applying curve fit: {str(e)}")
+
+    def clear(self):
+        self.text_edit.clear()
+
+    def on_click(self, event):
+        if event.inaxes:
+            x = event.xdata
+            self.highlight_point(x)
+
+    def highlight_point(self, x):
+        # Remove previous vertical line and highlighted points
+        if self.vertical_line:
+            self.vertical_line.remove()
+        for point in self.highlight_points:
+            point.remove()
+        self.highlight_points = []
+
+        # Add new vertical line
+        self.vertical_line = self.figure.axes[0].axvline(x, color='gray', linestyle='--')
+
+        # Highlight points on each axis
+        for ax in self.figure.axes:
+            for line in ax.lines:
+                xdata = line.get_xdata()
+                ydata = line.get_ydata()
+                index = np.argmin(np.abs(xdata - x))
+                highlight = ax.plot(xdata[index], ydata[index], 'o', color='red', markersize=8)[0]
+                self.highlight_points.append(highlight)
+
+        self.canvas.draw()
+
+    def update_title(self, title):
+        self.current_title = title
+        if hasattr(self, 'last_plot_params'):
+            self.last_plot_params['title'] = title
+            self.update_plot()
+
+    def toggle_original_data(self):
+        show_original = self.show_original_checkbox.isChecked()
+        logging.info(f"Toggling original data visibility: {show_original}")
+        for line in self.original_lines:
+            line.set_visible(show_original)
+        self.canvas.draw_idle()  # Use draw_idle() instead of draw() for better performance
+        logging.info("Original data visibility toggled")
+
+    def get_show_original_state(self):
+        return self.show_original_checkbox.isChecked()
+
+    def set_show_original_state(self, state):
+        self.show_original_checkbox.setChecked(state)
+        self.toggle_original_data()
+
+    def clear_plot(self):
+        logging.info("Clearing plot in PlotArea")
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        ax.set_title("No data to display")
+        ax.set_xlabel("X-axis")
+        ax.set_ylabel("Y-axis")
+        self.canvas.draw()
+        self.reset_title()
+
+    def reset_title(self):
+        self.current_title = ""
+        self.title_input.clear()  # Clear the title input field
+        if hasattr(self, 'last_plot_params'):
+            self.last_plot_params['title'] = ""
+
+        # Clear the plot title if there's an existing plot
+        if hasattr(self, 'figure') and self.figure.axes:
+            self.figure.axes[0].set_title("")
+            self.canvas.draw()
+
+
+--- session_manager.py ---
+# session_manager.py
+
+import pickle
+import logging
+from PyQt5.QtWidgets import QFileDialog, QMessageBox, QProgressDialog
+from PyQt5.QtCore import Qt, QCoreApplication
+
+
+class SessionManager:
+    def __init__(self, main_window):
+        self.main_window = main_window
+
+    def save_session(self):
+        file_name, _ = QFileDialog.getSaveFileName(self.main_window, "Save Session", "",
+                                                   "Inline Analytics Files (*.inlingh)")
+        if file_name:
+            if not file_name.endswith('.inlingh'):
+                file_name += '.inlingh'
+            try:
+                progress = QProgressDialog("Saving session...", "Cancel", 0, 100, self.main_window)
+                progress.setWindowModality(Qt.WindowModal)
+                progress.setMinimumDuration(0)
+                progress.setValue(0)
+
+                session_data = {
+                    'df': self.main_window.df,
+                    'original_df': self.main_window.original_df,
+                    'filtered_df': self.main_window.filtered_df,
+                    'x_column': self.main_window.left_panel.axis_selection.x_combo.currentText(),
+                    'y_columns': [item.text() for item in
+                                  self.main_window.left_panel.axis_selection.y_list.selectedItems()],
+                    'smoothing_params': self.main_window.left_panel.smoothing_options.get_params(),
+                    'limit_lines': self.main_window.left_panel.limit_lines.get_limit_lines(),
+                    'fit_type': self.main_window.left_panel.curve_fitting.fit_type.currentText(),
+                    'comments': self.main_window.left_panel.comment_box.get_comments(),
+                    'data_filter': {
+                        'column': self.main_window.left_panel.data_filter.filter_column.currentText(),
+                        'min_value': self.main_window.left_panel.data_filter.min_value.text(),
+                        'max_value': self.main_window.left_panel.data_filter.max_value.text(),
+                        'all_columns': [self.main_window.left_panel.data_filter.filter_column.itemText(i)
+                                        for i in range(self.main_window.left_panel.data_filter.filter_column.count())]
+                    },
+                    'statistics': self.main_window.right_panel.statistics_area.get_stats(),
+                    'show_original_data': self.main_window.right_panel.plot_area.get_show_original_state(),
+                    'plot_title': self.main_window.left_panel.get_plot_title()
+                }
+
+
+
+                progress.setValue(50)
+                QCoreApplication.processEvents()
+
+                with open(file_name, 'wb') as f:
+                    pickle.dump(session_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+                progress.setValue(100)
+                logging.info(f"Session saved successfully to {file_name}")
+                QMessageBox.information(self.main_window, "Success", "Session saved successfully!")
+            except Exception as e:
+                logging.error(f"Error saving session: {str(e)}")
+                QMessageBox.critical(self.main_window, "Error", f"An error occurred while saving the session: {str(e)}")
+            finally:
+                progress.close()
+
+    def load_session(self):
+        file_name, _ = QFileDialog.getOpenFileName(self.main_window, "Load Session", "",
+                                                   "Inline Analytics Files (*.inlingh)")
+        if file_name:
+            try:
+                progress = QProgressDialog("Loading session...", "Cancel", 0, 100, self.main_window)
+                progress.setWindowModality(Qt.WindowModal)
+                progress.setMinimumDuration(0)
+                progress.setValue(0)
+
+                with open(file_name, 'rb') as f:
+                    session_data = pickle.load(f)
+
+                progress.setValue(50)
+                QCoreApplication.processEvents()
+
+                self.main_window.df = session_data['df']
+                self.main_window.original_df = session_data['original_df']
+                self.main_window.filtered_df = session_data['filtered_df']
+
+                self.main_window.left_panel.axis_selection.update_options(self.main_window.df.columns)
+                self.main_window.left_panel.axis_selection.x_combo.setCurrentText(session_data['x_column'])
+                self.main_window.left_panel.axis_selection.y_list.clearSelection()
+                for y_column in session_data['y_columns']:
+                    items = self.main_window.left_panel.axis_selection.y_list.findItems(y_column, Qt.MatchExactly)
+                    if items:
+                        items[0].setSelected(True)
+
+                self.main_window.left_panel.smoothing_options.set_params(session_data['smoothing_params'])
+                self.main_window.left_panel.limit_lines.set_limit_lines(session_data['limit_lines'])
+                self.main_window.left_panel.curve_fitting.fit_type.setCurrentText(session_data['fit_type'])
+                self.main_window.left_panel.comment_box.set_comments(session_data['comments'])
+
+                # Load data filter settings
+                self.main_window.left_panel.data_filter.update_columns(session_data['data_filter']['all_columns'])
+                self.main_window.left_panel.data_filter.set_filter(
+                    session_data['data_filter']['column'],
+                    session_data['data_filter']['min_value'],
+                    session_data['data_filter']['max_value']
+                )
+
+                # Load statistics
+                self.main_window.right_panel.statistics_area.set_stats(session_data['statistics'])
+
+                self.main_window.right_panel.plot_area.set_show_original_state(
+                    session_data.get('show_original_data', True))
+
+                self.main_window.left_panel.set_plot_title(session_data.get('plot_title', ''))
+
+                progress.setValue(90)
+                QCoreApplication.processEvents()
+
+                self.main_window.update_plot()
+                progress.setValue(100)
+                logging.info(f"Session loaded successfully from {file_name}")
+                QMessageBox.information(self.main_window, "Success", "Session loaded successfully!")
+            except Exception as e:
+                logging.error(f"Error loading session: {str(e)}")
+                QMessageBox.critical(self.main_window, "Error",
+                                     f"An error occurred while loading the session: {str(e)}")
+            finally:
+                progress.close()
+
+    def new_session(self):
+        logging.info("Initiating new session")
+        try:
+            # Check if there's unsaved data
+            if self.main_window.unsaved_changes:
+                reply = QMessageBox.question(self.main_window, 'Save Changes?',
+                                             "Do you want to save the current session before creating a new one?",
+                                             QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+
+                if reply == QMessageBox.Yes:
+                    self.save_session()
+                elif reply == QMessageBox.Cancel:
+                    return  # User cancelled, don't create a new session
+
+            # Clear everything and create a new session
+            self.main_window.clear_all_data()
+            self.main_window.reset_ui()
+            self.main_window.update_plot()
+
+            QMessageBox.information(self.main_window, "New Session", "A new session has been created.")
+            logging.info("New session created successfully")
+        except Exception as e:
+            logging.error(f"Error creating new session: {str(e)}")
+            QMessageBox.critical(self.main_window, "Error", f"An error occurred while creating a new session: {str(e)}")
+
+
+--- smoothing_options.py ---
+
+
+from PyQt5.QtWidgets import QGroupBox, QFormLayout, QCheckBox, QComboBox, QSpinBox, QDoubleSpinBox
+
+class SmoothingOptions(QGroupBox):
+    def __init__(self, parent):
+        super().__init__("Smoothing Options", parent)
+        self.layout = QFormLayout()
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.smooth_check = QCheckBox("Apply Smoothing")
+        self.layout.addRow(self.smooth_check)
+
+        self.smooth_method = QComboBox()
+        self.smooth_method.addItems(['Mean Line', 'Savitzky-Golay', 'Gaussian Filter'])
+        self.layout.addRow("Smoothing Method:", self.smooth_method)
+
+        self.window_size = QSpinBox()
+        self.window_size.setRange(5, 500)
+        self.window_size.setValue(51)
+        self.layout.addRow("Window Size:", self.window_size)
+        self.poly_order = QSpinBox()
+        self.poly_order.setRange(1, 5)
+        self.poly_order.setValue(3)
+        self.layout.addRow("Polynomial Order:", self.poly_order)
+
+        self.sigma = QDoubleSpinBox()
+        self.sigma.setRange(0.1, 10.0)
+        self.sigma.setValue(2.0)
+        self.sigma.setSingleStep(0.1)
+        self.layout.addRow("Gaussian Sigma:", self.sigma)
+
+        self.setLayout(self.layout)
+
+    def get_params(self):
+        return {
+            'apply': self.smooth_check.isChecked(),
+            'method': self.smooth_method.currentText().lower().replace(' ', '_'),
+            'window_length': self.window_size.value(),
+            'poly_order': self.poly_order.value(),
+            'sigma': self.sigma.value()
+        }
+
+    def clear(self):
+        self.text_edit.clear()
+
+    def set_params(self, params):
+        self.smooth_check.setChecked(params['apply'])
+        self.smooth_method.setCurrentText(params['method'])
+        self.window_size.setValue(params['window_length'])
+        self.poly_order.setValue(params['poly_order'])
+        self.sigma.setValue(params['sigma'])
+
+    def reset(self):
+        self.smooth_check.setChecked(False)
+        self.smooth_method.setCurrentIndex(0)  # Set to first item ('Mean Line')
+        self.window_size.setValue(51)
+        self.poly_order.setValue(3)
+        self.sigma.setValue(2.0)
+
+
+--- statistics_area.py ---
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem
+
+class StatisticsArea(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.layout = QVBoxLayout(self)
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.stats_table = QTableWidget()
+        self.stats_table.setColumnCount(5)
+        self.stats_table.setHorizontalHeaderLabels(["Statistic", "Mean", "Max", "Min", "Std"])
+        self.layout.addWidget(self.stats_table)
+
+    def update_stats(self, df):
+        if df is not None:
+            stats = df.describe().transpose()
+            self.stats_table.setRowCount(len(stats))
+            for i, (index, row) in enumerate(stats.iterrows()):
+                self.stats_table.setItem(i, 0, QTableWidgetItem(str(index)))
+                self.stats_table.setItem(i, 1, QTableWidgetItem(str(row['mean'])))
+                self.stats_table.setItem(i, 2, QTableWidgetItem(str(row['max'])))
+                self.stats_table.setItem(i, 3, QTableWidgetItem(str(row['min'])))
+                self.stats_table.setItem(i, 4, QTableWidgetItem(str(row['std'])))
+            self.stats_table.resizeColumnsToContents()
+
+    def get_stats(self):
+        stats = {}
+        for i in range(self.stats_table.rowCount()):
+            statistic = self.stats_table.item(i, 0).text()
+            stats[statistic] = {
+                'mean': self.stats_table.item(i, 1).text(),
+                'max': self.stats_table.item(i, 2).text(),
+                'min': self.stats_table.item(i, 3).text(),
+                'std': self.stats_table.item(i, 4).text()
+            }
+        return stats
+
+    def set_stats(self, stats):
+        self.stats_table.setRowCount(len(stats))
+        for i, (statistic, values) in enumerate(stats.items()):
+            self.stats_table.setItem(i, 0, QTableWidgetItem(str(statistic)))
+            self.stats_table.setItem(i, 1, QTableWidgetItem(str(values['mean'])))
+            self.stats_table.setItem(i, 2, QTableWidgetItem(str(values['max'])))
+            self.stats_table.setItem(i, 3, QTableWidgetItem(str(values['min'])))
+            self.stats_table.setItem(i, 4, QTableWidgetItem(str(values['std'])))
+        self.stats_table.resizeColumnsToContents()
+
+    def clear_stats(self):
+        self.stats_table.setRowCount(0)
+
+--- __init__.py ---
+
+

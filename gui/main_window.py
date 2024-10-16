@@ -222,11 +222,18 @@ class MainWindow(QMainWindow):
             try:
                 with pd.ExcelWriter(file_name, engine='openpyxl') as writer:
                     # Write the main data
-                    self.df.to_excel(writer, sheet_name='Data', index=False)
+                    if self.filtered_df is not None and not self.filtered_df.empty:
+                        self.filtered_df.to_excel(writer, sheet_name='Data', index=False)
+                    else:
+                        self.df.to_excel(writer, sheet_name='Data', index=False)
 
-                    # Write statistics
-                    stats = self.df.describe()
-                    stats.to_excel(writer, sheet_name='Statistics')
+                    if self.filtered_df is not None and not self.filtered_df.empty:
+                        stats = self.filtered_df.describe()
+                        stats.to_excel(writer, sheet_name='Filtered Statistics')
+
+                    else:
+                        stats = self.df.describe()
+                        stats.to_excel(writer, sheet_name='Original Statistics')
 
                     # Write current plot configuration
                     plot_config = pd.DataFrame({
@@ -238,6 +245,7 @@ class MainWindow(QMainWindow):
                         'Window Size': [self.left_panel.smoothing_options.window_size.value()],
                         'Polynomial Order': [self.left_panel.smoothing_options.poly_order.value()],
                         'Gaussian Sigma': [self.left_panel.smoothing_options.sigma.value()],
+
                     })
                     plot_config.to_excel(writer, sheet_name='Plot Configuration', index=False)
 
