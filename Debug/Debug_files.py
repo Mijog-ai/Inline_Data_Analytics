@@ -25,8 +25,12 @@ def collect_py_files_text(folder_path, output_file):
 
 
 # Example usage:
-folder_path = 'H:/Pycharm_project/Inline_Data_Analytics_use/gui'  # Replace with the path to your folder
-output_file = 'collected_py_files)1.txt'
-collect_py_files_text(folder_path, output_file)
+folder_path_2 = 'H:/Pycharm_project/Inline_Data_Analytics_use/gui'
+folder_path_1 = 'H:/Pycharm_project/Inline_Data_Analytics_use/gui/components'
+output_file_1 = 'Collected_components.txt'
+output_file_2 = 'Collected_gui.txt'
+collect_py_files_text(folder_path_1, output_file_1)
 
-print(f"All .py files have been collected into {output_file}")
+collect_py_files_text(folder_path_2, output_file_2)
+
+print(f"All .py files have been collected into {output_file_1}")

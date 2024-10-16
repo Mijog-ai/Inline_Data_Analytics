@@ -1,6 +1,6 @@
 import logging
 import traceback
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QCheckBox, QHBoxLayout, QLabel, QLineEdit
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QCheckBox, QHBoxLayout, QLabel, QLineEdit, QPushButton
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -28,14 +28,17 @@ class PlotArea(QWidget):
 
     def setup_ui(self):
 
-        # Add title input
+        # Add title input and buttons
         title_layout = QHBoxLayout()
-        title_label = QLabel("Plot Title:")
         self.title_input = QLineEdit()
         self.title_input.setPlaceholderText("Enter plot title")
-        self.title_input.textChanged.connect(self.update_title)
-        title_layout.addWidget(title_label)
+        self.set_title_button = QPushButton("Set Title")
+        self.set_title_button.clicked.connect(self.set_title)
+        # self.update_title_button = QPushButton("Update Title")
+        # self.update_title_button.clicked.connect(self.update_title)
         title_layout.addWidget(self.title_input)
+        title_layout.addWidget(self.set_title_button)
+        # title_layout.addWidget(self.update_title_button)
         self.layout.addLayout(title_layout)
 
 
@@ -290,7 +293,17 @@ class PlotArea(QWidget):
 
         self.canvas.draw()
 
-    def update_title(self, title):
+    # def update_title(self):
+    #     if hasattr(self, 'figure') and self.figure.axes:
+    #         title = self.title_input.text()
+    #         self.figure.axes[0].set_title(title)
+    #         self.canvas.draw()
+    #         self.current_title = title
+    #         if hasattr(self, 'last_plot_params'):
+    #             self.last_plot_params['title'] = title
+
+    def set_title(self):
+        title = self.title_input.text()
         self.current_title = title
         if hasattr(self, 'last_plot_params'):
             self.last_plot_params['title'] = title
