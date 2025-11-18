@@ -1,10 +1,13 @@
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QFileDialog, QMessageBox, QAction
+from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QFileDialog, QMessageBox, QAction, QDialog
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
+
+from gui.components.sheet_selection_dialog import SheetSelectionDialog
 from gui.menu_bar import MenuBar
 from gui.tool_bar import ToolBar
 from gui.left_panel import LeftPanel
 from gui.right_panel import RightPanel
-from utils.asc_utils import load_and_process_asc_file, load_and_process_csv_file, load_and_process_tdms_file
+from utils.asc_utils import load_and_process_asc_file, load_and_process_csv_file, load_and_process_tdms_file, \
+    load_and_process_excel_file, get_excel_sheets
 import pandas as pd
 import logging
 import os
@@ -71,27 +74,48 @@ class MainWindow(QMainWindow):
         self.right_panel.plot_area.clear_plot()
         self.right_panel.statistics_area.clear_stats()
 
-
-
-
     def load_file(self, file_path=None):
         print("load_file method called in MainWindow")
         logging.info("load_file method called in MainWindow")
         if file_path is None:
-            file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "",
-                                                       "All Files (*);;ASC Files (*.asc);;CSV Files (*.csv);;TDMS Files (*.tdms)")
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Open File", "",
+                "All Files (*);;ASC Files (*.asc);;CSV Files (*.csv);;TDMS Files (*.tdms);;Excel Files (*.xlsx *.xls)"
+            )
         if file_path:
             print(f"File selected: {file_path}")
             logging.info(f"File selected: {file_path}")
             try:
                 logging.info(f"Attempting to load file: {file_path}")
                 file_extension = os.path.splitext(file_path)[1].lower()
+
                 if file_extension == '.asc':
                     self.df = load_and_process_asc_file(file_path)
                 elif file_extension == '.csv':
                     self.df = load_and_process_csv_file(file_path)
                 elif file_extension == '.tdms':
                     self.df = load_and_process_tdms_file(file_path)
+                elif file_extension in ['.xlsx', '.xls']:
+                    # Get list of sheets in the Excel file
+                    sheet_names = get_excel_sheets(file_path)
+
+                    if not sheet_names:
+                        raise ValueError("No sheets found in Excel file")
+
+                    # If multiple sheets, show selection dialog
+                    if len(sheet_names) > 1:
+                        dialog = SheetSelectionDialog(sheet_names, self)
+                        if dialog.exec_() == QDialog.Accepted:
+                            selected_sheet = dialog.get_selected_sheet()
+                            self.df = load_and_process_excel_file(file_path, selected_sheet)
+                            logging.info(f"Loaded sheet: {selected_sheet}")
+                        else:
+                            logging.info("User cancelled sheet selection")
+                            return
+                    else:
+                        # Only one sheet, load it directly
+                        self.df = load_and_process_excel_file(file_path, sheet_names[0])
+                        logging.info(f"Loaded single sheet: {sheet_names[0]}")
                 else:
                     raise ValueError(f"Unsupported file type: {file_extension}")
 
@@ -102,7 +126,6 @@ class MainWindow(QMainWindow):
                 self.filtered_df = self.df.copy()
                 self.update_ui_after_load()
 
-
                 self.current_file = file_path
                 self.tool_bar.update_file_name(self.current_file)
                 logging.info(f"File loaded successfully. Shape: {self.df.shape}")
@@ -112,7 +135,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"An error occurred while loading the file: {str(e)}")
         else:
             logging.info("File loading cancelled by user")
-
 
     def setup_edit_actions(self):
         self.show_limit_lines_action = (QAction
@@ -128,9 +150,8 @@ class MainWindow(QMainWindow):
         self.show_data_filter_action = QAction('Data_Filter_plotter', self, checkable=True)
         self.show_data_filter_action.triggered.connect(self.toggle_data_filter)
 
-        self.show_curve_fitting_action = QAction('Curve Fitting', self, checkable = True)
+        self.show_curve_fitting_action = QAction('Curve Fitting', self, checkable=True)
         self.show_curve_fitting_action.triggered.connect(self.toggle_curve_fitting)
-
 
         self.menu_bar.add_edit_actions(self.show_limit_lines_action,
                                        self.show_smoothing_options_action,
@@ -347,3 +368,5 @@ class MainWindow(QMainWindow):
         if self.right_panel.plot_area.last_plot_params:
             self.right_panel.plot_area.last_plot_params['title'] = title
             self.update_plot()
+
+

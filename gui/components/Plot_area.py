@@ -10,6 +10,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 class PlotArea(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
@@ -19,8 +20,7 @@ class PlotArea(QWidget):
         self.show_legend = True
         self.yaxis_approx_value_highlighter = True
         self.setup_ui()
-        self.vertical_line = None
-        self.highlight_points = []
+        self.vertical_lines = []  # Changed to list to store multiple lines
 
         self.original_lines = []
         self.smoothed_lines = []
@@ -40,8 +40,6 @@ class PlotArea(QWidget):
         title_layout.addWidget(self.set_title_button)
         # title_layout.addWidget(self.update_title_button)
         self.layout.addLayout(title_layout)
-
-
 
         self.figure = Figure(figsize=(5, 4), dpi=100)
         self.canvas = FigureCanvas(self.figure)
@@ -70,14 +68,13 @@ class PlotArea(QWidget):
         checkbox_layout.addWidget(self.highlighter_checkbox)
         checkbox_layout.addWidget(self.show_original_checkbox)
 
-
         self.layout.addLayout(checkbox_layout)
         self.layout.addWidget(self.toolbar)
         self.layout.addWidget(self.canvas)
 
         self.setLayout(self.layout)
 
-    def toggle_highlighter(self,state):
+    def toggle_highlighter(self, state):
         self.yaxis_approx_value_highlighter = bool(state)
         self.update_plot()
 
@@ -228,7 +225,6 @@ class PlotArea(QWidget):
             logging.error(traceback.format_exc())
             QMessageBox.critical(self, "Error", f"An error occurred while plotting: {str(e)}")
 
-
     def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type):
         try:
             logging.info(f"Applying {fit_type} curve fitting to plot")
@@ -252,7 +248,6 @@ class PlotArea(QWidget):
             ax.set_xlabel('X')
             ax.set_ylabel('Y')
 
-
             # Toggeling original data on smoothing
             self.toggle_original_data()
 
@@ -269,29 +264,77 @@ class PlotArea(QWidget):
     def on_click(self, event):
         if event.inaxes:
             x = event.xdata
-            self.highlight_point(x)
+            if event.button == 1:  # Left click - add line and points
+                self.add_highlight(x)
+            elif event.button == 3:  # Right click - remove nearest line and points
+                self.remove_nearest_highlight(x)
 
-    def highlight_point(self, x):
-        # Remove previous vertical line and highlighted points
-        if self.vertical_line:
-            self.vertical_line.remove()
-        for point in self.highlight_points:
-            point.remove()
-        self.highlight_points = []
-
+    def add_highlight(self, x):
         # Add new vertical line
-        self.vertical_line = self.figure.axes[0].axvline(x, color='gray', linestyle='--')
+        vertical_line = self.figure.axes[0].axvline(x, color='gray', linestyle='--')
+
+        # Create list to store highlight points for this vertical line
+        points_group = []
 
         # Highlight points on each axis
         for ax in self.figure.axes:
             for line in ax.lines:
+                # Only process lines that are actual data (not vertical lines, not markers)
+                # Data lines typically have linestyle '-' and no marker or empty marker
+                linestyle = line.get_linestyle()
+                marker = line.get_marker()
+
+                # Skip vertical/horizontal reference lines (dashed lines)
+                if linestyle in ['--', '-.', ':']:
+                    continue
+
+                # Skip if this is already a highlight point (has 'o' marker)
+                if marker == 'o':
+                    continue
+
                 xdata = line.get_xdata()
                 ydata = line.get_ydata()
+
+                # Check if xdata and ydata have valid lengths
+                if len(xdata) == 0 or len(ydata) == 0:
+                    continue
+
+                # Find the closest point to the clicked x position
                 index = np.argmin(np.abs(xdata - x))
-                highlight = ax.plot(xdata[index], ydata[index], 'o', color='red', markersize=8)[0]
-                self.highlight_points.append(highlight)
+
+                # Plot the highlight point at the actual data point location
+                highlight = ax.plot(xdata[index], ydata[index], 'o', color='red', markersize=8, zorder=10)[0]
+                points_group.append(highlight)
+
+        # Store the vertical line and its associated points as a tuple
+        self.vertical_lines.append((x, vertical_line, points_group))
 
         self.canvas.draw()
+
+    def remove_nearest_highlight(self, x):
+        # Find and remove the nearest vertical line and its points
+        if not self.vertical_lines:
+            return
+
+        # Find the nearest vertical line
+        distances = [abs(vline[0] - x) for vline in self.vertical_lines]
+        nearest_index = np.argmin(distances)
+
+        # Remove the line and points
+        _, vertical_line, points_group = self.vertical_lines[nearest_index]
+        vertical_line.remove()
+        for point in points_group:
+            point.remove()
+
+        # Remove from the list
+        self.vertical_lines.pop(nearest_index)
+
+        self.canvas.draw()
+
+    def highlight_point(self, x):
+        # This method is kept for backward compatibility if needed elsewhere
+        # It now calls add_highlight instead
+        self.add_highlight(x)
 
     # def update_title(self):
     #     if hasattr(self, 'figure') and self.figure.axes:
@@ -333,6 +376,8 @@ class PlotArea(QWidget):
         ax.set_ylabel("Y-axis")
         self.canvas.draw()
         self.reset_title()
+        # Clear vertical lines list when plot is cleared
+        self.vertical_lines = []
 
     def reset_title(self):
         self.current_title = ""
