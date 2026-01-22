@@ -220,6 +220,13 @@ def apply_smoothing(data, method='savgol', window_length=21, poly_order=3, sigma
     --------
     Smoothed data as pandas Series or numpy array
     """
+    # Convert numpy array to pandas Series for methods that require it
+    is_numpy = isinstance(data, np.ndarray)
+    if is_numpy:
+        data_series = pd.Series(data)
+    else:
+        data_series = data
+
     # Ensure window_length is odd and valid
     if window_length >= len(data):
         window_length = len(data) - 1
@@ -231,7 +238,8 @@ def apply_smoothing(data, method='savgol', window_length=21, poly_order=3, sigma
     try:
         if method == 'moving_average' or method == 'mean_line':
             # Simple moving average
-            return data.rolling(window=window_length, center=True, min_periods=1).mean()
+            result = data_series.rolling(window=window_length, center=True, min_periods=1).mean()
+            return result.values if is_numpy else result
 
         elif method == 'savitzky-golay':
             # Savitzky-Golay filter
@@ -245,7 +253,8 @@ def apply_smoothing(data, method='savgol', window_length=21, poly_order=3, sigma
 
         elif method == 'exponential_moving_avg':
             # Exponential moving average
-            return data.ewm(alpha=alpha, adjust=False).mean()
+            result = data_series.ewm(alpha=alpha, adjust=False).mean()
+            return result.values if is_numpy else result
 
         elif method == 'median_filter':
             # Median filter (robust to outliers)
@@ -258,12 +267,14 @@ def apply_smoothing(data, method='savgol', window_length=21, poly_order=3, sigma
                 from statsmodels.nonparametric.smoothers_lowess import lowess
                 # Create x values (indices)
                 x = np.arange(len(data))
-                # Apply lowess
-                smoothed = lowess(data, x, frac=lowess_frac, return_sorted=False)
+                # Apply lowess - convert to numpy array for lowess
+                data_array = data if isinstance(data, np.ndarray) else data.values
+                smoothed = lowess(data_array, x, frac=lowess_frac, return_sorted=False)
                 return smoothed
             except ImportError:
                 logging.warning("statsmodels not installed. Falling back to moving average.")
-                return data.rolling(window=window_length, center=True, min_periods=1).mean()
+                result = data_series.rolling(window=window_length, center=True, min_periods=1).mean()
+                return result.values if is_numpy else result
 
         # elif method == 'butterworth_filter':
         #     # Butterworth low-pass filter
@@ -313,8 +324,9 @@ def apply_smoothing(data, method='savgol', window_length=21, poly_order=3, sigma
         else:
             # Default to moving average
             logging.warning(f"Unknown smoothing method: {method}. Using moving average.")
-            return data.rolling(window=window_length, center=True, min_periods=1).mean()
+            result = data_series.rolling(window=window_length, center=True, min_periods=1).mean()
+            return result.values if is_numpy else result
 
     except Exception as e:
         logging.error(f"Error in smoothing: {e}. Returning original data.")
-        return data
+        return data if isinstance(data, np.ndarray) else data.values
