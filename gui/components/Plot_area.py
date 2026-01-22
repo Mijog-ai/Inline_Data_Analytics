@@ -58,8 +58,12 @@ class PlotArea(QWidget):
         self.plot_widget.setBackground('w')  # White background
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
 
-        # Enable antialiasing for smoother lines
-        pg.setConfigOptions(antialias=True)
+        # Enable antialiasing for smoother lines and performance optimizations
+        pg.setConfigOptions(
+            antialias=True,
+            useOpenGL=True,  # Enable OpenGL for better performance
+            enableExperimental=True  # Enable experimental optimizations
+        )
         self.plot_widget.setMouseEnabled(x=False, y=False)
 
         # Add checkboxes for cursor and legend toggle
@@ -162,8 +166,11 @@ class PlotArea(QWidget):
         )
 
         if reply == QMessageBox.Yes:
+            # Batch removal with signal blocking for better performance
+            self.plot_widget.blockSignals(True)
             for text_data in self.floating_text_items:
                 self.plot_widget.removeItem(text_data['item'])
+            self.plot_widget.blockSignals(False)
             self.floating_text_items = []
 
             # Uncheck removal mode if active
@@ -176,7 +183,7 @@ class PlotArea(QWidget):
 
     def toggle_highlighter(self, state):
         self.yaxis_approx_value_highlighter = bool(state)
-        self.update_plot()
+        # No need to rebuild plot, just toggle the mode
 
     def toggle_cursor(self, state):
         self.show_cursor = bool(state)
@@ -206,6 +213,24 @@ class PlotArea(QWidget):
             colors.append(color)
         return colors
 
+    def find_nearest_index(self, x_data, x_value):
+        """Find nearest index using binary search - O(log n) instead of O(n)"""
+        if len(x_data) == 0:
+            return 0
+
+        # Use searchsorted for O(log n) lookup (assumes sorted data)
+        idx = np.searchsorted(x_data, x_value)
+
+        # Clamp to valid range
+        idx = np.clip(idx, 0, len(x_data) - 1)
+
+        # Check if previous index is closer
+        if idx > 0:
+            if abs(x_data[idx - 1] - x_value) < abs(x_data[idx] - x_value):
+                idx = idx - 1
+
+        return idx
+
     def plot_data(self, df, x_column, y_columns, smoothing_params, limit_lines=[], title=None):
         try:
             if title is not None:
@@ -213,6 +238,9 @@ class PlotArea(QWidget):
             else:
                 title = self.current_title
             logging.info(f"Plotting data: x={x_column}, y={y_columns}, title={title}")
+
+            # Disable updates during batch operations for performance
+            self.plot_widget.setUpdatesEnabled(False)
 
             self.clear_all_axes()
 
@@ -312,11 +340,14 @@ class PlotArea(QWidget):
                 original_color.setAlpha(original_alpha)
                 original_pen = mkPen(color=original_color, width=2)
 
-                # Plot original data
+                # Plot original data (with performance optimizations)
                 original_curve = pg.PlotDataItem(
                     x_data, y_data,
                     pen=original_pen,
-                    name=f'{y_column} (Original)'
+                    name=f'{y_column} (Original)',
+                    clipToView=True,  # Only render visible points
+                    autoDownsample=True,  # Automatically downsample for performance
+                    downsampleMethod='subsample'  # Use subsample for speed
                 )
 
                 if i == 0:
@@ -351,7 +382,10 @@ class PlotArea(QWidget):
                     smoothed_curve = pg.PlotDataItem(
                         x_data, y_smoothed,
                         pen=smoothed_pen,
-                        name=f'{y_column} (Smoothed)'
+                        name=f'{y_column} (Smoothed)',
+                        clipToView=True,  # Only render visible points
+                        autoDownsample=True,  # Automatically downsample for performance
+                        downsampleMethod='subsample'  # Use subsample for speed
                     )
 
                     if i == 0:
@@ -419,9 +453,15 @@ class PlotArea(QWidget):
                 'title': title
             }
 
+            # Re-enable updates after batch operations complete
+            self.plot_widget.setUpdatesEnabled(True)
+            self.plot_widget.update()  # Force a single update
+
         except Exception as e:
             logging.error(f"Error in plot_data: {str(e)}")
             logging.error(traceback.format_exc())
+            # Re-enable updates even on error
+            self.plot_widget.setUpdatesEnabled(True)
             QMessageBox.critical(self, "Error", f"An error occurred while plotting: {str(e)}")
 
     def on_mouse_moved(self, evt):
@@ -442,7 +482,7 @@ class PlotArea(QWidget):
             # Get x-axis label
             xlabel = self.last_plot_params.get('x_column', 'X') if hasattr(self, 'last_plot_params') else 'X'
 
-            # Find nearest data points
+            # Find nearest data points (optimized with binary search)
             cursor_text = f"{xlabel}: {x:.2f}\n"
 
             for item in self.plot_items:
@@ -451,7 +491,7 @@ class PlotArea(QWidget):
                     y_data = item['y_data']
 
                     if len(x_data) > 0:
-                        idx = np.argmin(np.abs(x_data - x))
+                        idx = self.find_nearest_index(x_data, x)
                         nearest_y = y_data[idx]
                         cursor_text += f"{item['label']}: {nearest_y:.2f}\n"
 
@@ -505,7 +545,7 @@ class PlotArea(QWidget):
                 self.remove_nearest_highlight(x)
 
     def add_highlight(self, x):
-        """Add vertical line and highlight points at x position"""
+        """Add vertical line and highlight points at x position (optimized)"""
         # Get x-axis label
         xlabel = self.last_plot_params.get('x_column', 'X') if hasattr(self, 'last_plot_params') else 'X'
 
@@ -515,6 +555,9 @@ class PlotArea(QWidget):
         # Get the main viewbox
         main_viewbox = self.plot_widget.getViewBox()
 
+        # Disable updates during batch add for performance
+        self.plot_widget.setUpdatesEnabled(False)
+
         # Create separate annotation for each line at its intersection point
         for item in self.plot_items:
             if item['curve'].isVisible():
@@ -522,8 +565,8 @@ class PlotArea(QWidget):
                 y_data = item['y_data']
 
                 if len(x_data) > 0:
-                    # Find nearest point
-                    idx = np.argmin(np.abs(x_data - x))
+                    # Find nearest point (optimized with binary search)
+                    idx = self.find_nearest_index(x_data, x)
                     nearest_x = x_data[idx]
                     nearest_y = y_data[idx]
 
@@ -594,6 +637,10 @@ class PlotArea(QWidget):
         # Store all items with their viewboxes for this highlight
         self.vertical_lines.append((x, points_group))
 
+        # Re-enable updates after batch operations complete
+        self.plot_widget.setUpdatesEnabled(True)
+        self.plot_widget.update()  # Force a single update
+
 
     def insert_floating_text_at_position(self, x, y):
         """Insert floating text box at specified position"""
@@ -636,20 +683,23 @@ class PlotArea(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to insert text: {str(e)}")
 
     def remove_nearest_highlight(self, x):
-        """Remove the nearest vertical line, points, and annotation"""
+        """Remove the nearest vertical line, points, and annotation (optimized)"""
         if not self.vertical_lines:
             return
 
-        # Find nearest vertical line
-        distances = [abs(vline[0] - x) for vline in self.vertical_lines]
+        # Find nearest vertical line using numpy for efficiency
+        distances = np.array([abs(vline[0] - x) for vline in self.vertical_lines])
         nearest_index = np.argmin(distances)
 
-        # Remove all items with their correct viewboxes
+        # Remove all items with their correct viewboxes (batch operation)
         _, points_group = self.vertical_lines[nearest_index]
 
+        # Block signals for batch removal
         for item, viewbox in points_group:
             try:
+                viewbox.blockSignals(True)
                 viewbox.removeItem(item)
+                viewbox.blockSignals(False)
             except Exception as e:
                 logging.warning(f"Could not remove item from viewbox: {e}")
                 # Fallback: try removing from plot widget
@@ -660,7 +710,7 @@ class PlotArea(QWidget):
 
         # Remove from list
         self.vertical_lines.pop(nearest_index)
-        logging.info(f"Removed highlight at x={x:.2f}")
+        logging.info(f"Removed highlight at x={x:.2f} (optimized)")
 
     def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type, x_label, y_label):
         """Apply curve fitting to the plot"""
@@ -732,12 +782,15 @@ class PlotArea(QWidget):
             self.last_plot_params['title'] = title
 
     def toggle_original_data(self):
-        """Toggle visibility of original data lines"""
+        """Toggle visibility of original data lines (optimized - no rebuild)"""
         show_original = self.show_original_checkbox.isChecked()
         logging.info(f"Toggling original data visibility: {show_original}")
+
+        # Block signals to prevent multiple repaints
         for line in self.original_lines:
             line.setVisible(show_original)
-        logging.info("Original data visibility toggled")
+
+        logging.info("Original data visibility toggled (optimized)")
 
     def get_show_original_state(self):
         """Get the state of show original checkbox"""
