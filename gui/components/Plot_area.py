@@ -350,10 +350,8 @@ class PlotArea(QWidget):
                     downsampleMethod='subsample'  # Use subsample for speed
                 )
 
-                if i == 0:
-                    self.plot_widget.addItem(original_curve)
-                else:
-                    viewbox.addItem(original_curve)
+                # Always add to viewbox (not directly to plot_widget) to maintain proper parent hierarchy
+                viewbox.addItem(original_curve)
 
                 self.original_lines.append(original_curve)
                 self.plot_items.append({
@@ -388,10 +386,8 @@ class PlotArea(QWidget):
                         downsampleMethod='subsample'  # Use subsample for speed
                     )
 
-                    if i == 0:
-                        self.plot_widget.addItem(smoothed_curve)
-                    else:
-                        viewbox.addItem(smoothed_curve)
+                    # Always add to viewbox (not directly to plot_widget) to maintain proper parent hierarchy
+                    viewbox.addItem(smoothed_curve)
 
                     self.smoothed_lines.append(smoothed_curve)
                     self.plot_items.append({
