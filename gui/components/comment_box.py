@@ -8,8 +8,8 @@ class CommentBox(QGroupBox):
 
     def setup_ui(self):
         self.comment_box = QTextEdit()
+        self.comment_box.setPlaceholderText("Enter text for annotations or notes...")
         self.layout.addWidget(self.comment_box)
-
         self.setLayout(self.layout)
 
     def get_comments(self):
