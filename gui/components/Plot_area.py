@@ -498,14 +498,14 @@ class PlotArea(QWidget):
             # Toggle cursor visibility
             self.toggle_cursor(self.cursor_action.isChecked())
 
-            # Calculate and set X-axis range starting from 0 or min(x)
+            # Calculate and set X-axis range from actual data minimum
             all_x_data = df[x_column].values
             if len(all_x_data) > 0:
                 x_min = float(np.min(all_x_data))
                 x_max = float(np.max(all_x_data))
 
-                # Start from 0 if data is positive, otherwise from min(x)
-                x_start = 0 if x_min >= 0 else x_min
+                # Start from actual data minimum
+                x_start = x_min
 
                 # Store original range for zoom operations
                 self.original_x_range = (x_start, x_max)
@@ -522,8 +522,8 @@ class PlotArea(QWidget):
                 overall_y_min = min(y_range[0] for y_range in all_y_ranges)
                 overall_y_max = max(y_range[1] for y_range in all_y_ranges)
 
-                # Start from 0 if data is positive, otherwise from min(y)
-                y_start = 0 if overall_y_min >= 0 else overall_y_min
+                # Start from actual data minimum
+                y_start = overall_y_min
 
                 # Add some padding to y_max for better visibility
                 y_range = overall_y_max - y_start
@@ -1054,7 +1054,7 @@ class PlotArea(QWidget):
                 if len(all_y_data) > 0:
                     y_min = float(np.min(all_y_data))
                     y_max = float(np.max(all_y_data))
-                    y_start = 0 if y_min >= 0 else y_min
+                    y_start = y_min
                     y_range = y_max - y_start
                     y_max_padded = y_max + (y_range * 0.05)
                     main_viewbox.setYRange(y_start, y_max_padded, padding=0)
