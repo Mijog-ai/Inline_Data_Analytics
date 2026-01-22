@@ -67,7 +67,7 @@ class PlotArea(QWidget):
         self.plot_widget.setMouseEnabled(x=False, y=False)
 
         self.layout.addWidget(self.plot_widget)
-        
+
         # Create custom legend area below the plot (Excel-style)
         self.legend_widget = QWidget()
         self.legend_layout = QHBoxLayout(self.legend_widget)
@@ -82,7 +82,7 @@ class PlotArea(QWidget):
 
         # Setup mouse click event
         self.plot_widget.scene().sigMouseClicked.connect(self.on_click)
-        
+
         # Setup double-click event
         self.plot_widget.scene().sigMouseClicked.connect(self.on_double_click)
 
@@ -136,7 +136,8 @@ class PlotArea(QWidget):
         self.highlighter_action = QAction("Highlight Mode", self)
         self.highlighter_action.setCheckable(True)
         self.highlighter_action.setChecked(False)
-        self.highlighter_action.setToolTip("Enable highlight mode - right click to add highlights, double click to remove")
+        self.highlighter_action.setToolTip(
+            "Enable highlight mode - right click to add highlights, double click to remove")
         self.highlighter_action.triggered.connect(self.toggle_highlighter)
         self.toolbar.addAction(self.highlighter_action)
 
@@ -146,7 +147,8 @@ class PlotArea(QWidget):
         self.zoom_region_action = QAction("Zoom Region", self)
         self.zoom_region_action.setCheckable(True)
         self.zoom_region_action.setChecked(False)
-        self.zoom_region_action.setToolTip("Enable zoom region mode - left click to add boundary lines (max 2), right click to remove")
+        self.zoom_region_action.setToolTip(
+            "Enable zoom region mode - left click to add boundary lines (max 2), right click to remove")
         self.zoom_region_action.triggered.connect(self.toggle_zoom_region_mode)
         self.toolbar.addAction(self.zoom_region_action)
 
@@ -246,60 +248,60 @@ class PlotArea(QWidget):
     def populate_custom_legend(self, y_columns, colors, has_smoothing):
         """Populate the custom legend below the plot (Excel-style)"""
         self.clear_custom_legend()
-        
+
         # Add stretch at the beginning to center the legend items
         self.legend_layout.addStretch()
-        
+
         for y_column, color in zip(y_columns, colors):
             # Create legend item container
             item_widget = QWidget()
             item_layout = QHBoxLayout(item_widget)
             item_layout.setContentsMargins(0, 0, 0, 0)
             item_layout.setSpacing(5)
-            
+
             # Color indicator (line)
             color_label = QLabel()
             color_label.setFixedSize(30, 3)
             color_label.setStyleSheet(f"background-color: {color.name()}; border: none;")
             item_layout.addWidget(color_label)
-            
+
             # Text label
             text_label = QLabel(y_column)
             text_label.setStyleSheet("font-size: 10pt; color: black;")
             item_layout.addWidget(text_label)
-            
+
             self.legend_layout.addWidget(item_widget)
             self.legend_items.append(item_widget)
-            
+
             # If smoothing is applied, add smoothed version
             if has_smoothing:
                 # Add some spacing
                 spacer = QLabel("  ")
                 self.legend_layout.addWidget(spacer)
-                
+
                 # Create smoothed legend item
                 smoothed_widget = QWidget()
                 smoothed_layout = QHBoxLayout(smoothed_widget)
                 smoothed_layout.setContentsMargins(0, 0, 0, 0)
                 smoothed_layout.setSpacing(5)
-                
+
                 # Color indicator (solid line for smoothed)
                 smoothed_color_label = QLabel()
                 smoothed_color_label.setFixedSize(30, 3)
                 smoothed_color_label.setStyleSheet(f"background-color: {color.name()}; border: none;")
                 smoothed_layout.addWidget(smoothed_color_label)
-                
+
                 # Text label
                 smoothed_text_label = QLabel(f"{y_column} (Smoothed)")
                 smoothed_text_label.setStyleSheet("font-size: 10pt; color: black;")
                 smoothed_layout.addWidget(smoothed_text_label)
-                
+
                 self.legend_layout.addWidget(smoothed_widget)
                 self.legend_items.append(smoothed_widget)
-        
+
         # Add stretch at the end to center the legend items
         self.legend_layout.addStretch()
-        
+
         logging.info(f"Custom legend populated with {len(self.legend_items)} items")
 
     def update_plot(self):
@@ -374,8 +376,17 @@ class PlotArea(QWidget):
             # Generate distinct colors
             colors = self.get_distinct_colors(len(y_columns))
 
-            # Get the main view box
-            main_viewbox = self.plot_widget.getViewBox()
+            # ===== CRITICAL FIX: Get the ViewBox correctly =====
+            # Use getPlotItem().getViewBox() instead of getViewBox() directly
+            # This ensures we always get the actual ViewBox object, not PlotWidget
+            main_viewbox = self.plot_widget.getPlotItem().getViewBox()
+
+            # Verify it's actually a ViewBox
+            if not isinstance(main_viewbox, pg.ViewBox):
+                logging.error(f"main_viewbox is {type(main_viewbox)}, not ViewBox!")
+                # Fallback
+                main_viewbox = self.plot_widget.plotItem.vb
+            # ===== END CRITICAL FIX =====
 
             # Store all y data ranges for proper scaling
             all_y_ranges = []
@@ -392,15 +403,11 @@ class PlotArea(QWidget):
                 x_data = df[x_column].values
                 y_data = df[y_column].values
 
-                # For now, use only the main viewbox to avoid complexity
-                # Multi-axis support can be added later with proper implementation
+                # Always use the main viewbox - this is now guaranteed to be a ViewBox
+                viewbox = main_viewbox
+
                 if i == 0:
-                    viewbox = main_viewbox
                     self.plot_widget.setLabel('left', y_column, color=color.name())
-                else:
-                    # Use main viewbox for all plots for now
-                    viewbox = main_viewbox
-                    # Note: Multiple Y-axes disabled temporarily to fix rendering issues
 
                 # Set opacity based on smoothing
                 if smoothing_params['apply']:
@@ -572,7 +579,7 @@ class PlotArea(QWidget):
 
         pos = evt[0]
         if self.plot_widget.sceneBoundingRect().contains(pos):
-            mouse_point = self.plot_widget.getViewBox().mapSceneToView(pos)
+            mouse_point = self.plot_widget.getPlotItem().getViewBox().mapSceneToView(pos)
             x = mouse_point.x()
             y = mouse_point.y()
 
@@ -606,7 +613,7 @@ class PlotArea(QWidget):
         if not self.plot_widget.sceneBoundingRect().contains(pos):
             return
 
-        mouse_point = self.plot_widget.getViewBox().mapSceneToView(pos)
+        mouse_point = self.plot_widget.getPlotItem().getViewBox().mapSceneToView(pos)
         x = mouse_point.x()
         y = mouse_point.y()
 
@@ -652,7 +659,7 @@ class PlotArea(QWidget):
             if not self.plot_widget.sceneBoundingRect().contains(pos):
                 return
 
-            mouse_point = self.plot_widget.getViewBox().mapSceneToView(pos)
+            mouse_point = self.plot_widget.getPlotItem().getViewBox().mapSceneToView(pos)
             x = mouse_point.x()
 
             # Double-click removes highlight in highlight mode
@@ -668,7 +675,7 @@ class PlotArea(QWidget):
         points_group = []
 
         # Get the main viewbox
-        main_viewbox = self.plot_widget.getViewBox()
+        main_viewbox = self.plot_widget.getPlotItem().getViewBox()
 
         # Disable updates during batch add for performance
         self.plot_widget.setUpdatesEnabled(False)
@@ -756,7 +763,6 @@ class PlotArea(QWidget):
         self.plot_widget.setUpdatesEnabled(True)
         self.plot_widget.update()  # Force a single update
 
-
     def insert_floating_text_at_position(self, x, y):
         """Insert floating text box at specified position"""
         try:
@@ -809,8 +815,8 @@ class PlotArea(QWidget):
 
         for text_data in self.floating_text_items:
             text_x, text_y = text_data['position']
-            distance = np.sqrt((text_x - x)**2 + (text_y - y)**2)
-            
+            distance = np.sqrt((text_x - x) ** 2 + (text_y - y) ** 2)
+
             if distance < min_distance:
                 min_distance = distance
                 closest_text = text_data
@@ -819,7 +825,8 @@ class PlotArea(QWidget):
         if closest_text and min_distance < threshold:
             self.plot_widget.removeItem(closest_text['item'])
             self.floating_text_items.remove(closest_text)
-            logging.info(f"Removed floating text at ({closest_text['position'][0]:.2f}, {closest_text['position'][1]:.2f})")
+            logging.info(
+                f"Removed floating text at ({closest_text['position'][0]:.2f}, {closest_text['position'][1]:.2f})")
             return True
 
         return False
@@ -1035,22 +1042,22 @@ class PlotArea(QWidget):
     def restore_original_range(self):
         """Restore the plot to its original data range"""
         if self.original_x_range is not None:
-            main_viewbox = self.plot_widget.getViewBox()
+            main_viewbox = self.plot_widget.getPlotItem().getViewBox()
             main_viewbox.setXRange(
                 self.original_x_range[0],
                 self.original_x_range[1],
                 padding=0.02
             )
-            
+
             # Restore Y range based on all visible data
             if hasattr(self, 'last_plot_params'):
                 df = self.last_plot_params['df']
                 y_columns = self.last_plot_params['y_columns']
-                
+
                 all_y_data = []
                 for y_column in y_columns:
                     all_y_data.extend(df[y_column].values)
-                
+
                 if len(all_y_data) > 0:
                     y_min = float(np.min(all_y_data))
                     y_max = float(np.max(all_y_data))
@@ -1058,7 +1065,7 @@ class PlotArea(QWidget):
                     y_range = y_max - y_start
                     y_max_padded = y_max + (y_range * 0.05)
                     main_viewbox.setYRange(y_start, y_max_padded, padding=0)
-            
+
             logging.info(f"Restored original range: {self.original_x_range}")
 
     def clear_zoom_region(self):
@@ -1072,13 +1079,13 @@ class PlotArea(QWidget):
     def clear_plot(self):
         """Clear the plot"""
         logging.info("Clearing plot in PlotArea")
-        
+
         # Clear all axes first to prevent viewbox issues
         self.clear_all_axes()
-        
+
         # Clear the plot widget
         self.plot_widget.clear()
-        
+
         # Reset all data structures
         self.plot_items = []
         self.original_lines = []
@@ -1090,7 +1097,7 @@ class PlotArea(QWidget):
         self.original_x_range = None
         self.floating_text_items = []
         self.highlight_points = []
-        
+
         # Clear last plot params to prevent replotting old data
         if hasattr(self, 'last_plot_params'):
             delattr(self, 'last_plot_params')
@@ -1107,7 +1114,7 @@ class PlotArea(QWidget):
         self.plot_widget.setLabel('bottom', "X-axis")
         self.plot_widget.setLabel('left', "Y-axis")
         self.reset_title()
-        
+
         logging.info("Plot cleared successfully")
 
     def reset_title(self):
@@ -1128,7 +1135,7 @@ class PlotArea(QWidget):
 
     def enable_insertion(self, text):
         self.text_insertion_mode = True
-        self.pending_text= text
+        self.pending_text = text
         self.plot_widget.setCursor(Qt.CrossCursor)
 
         # Show message to user
@@ -1245,16 +1252,33 @@ class PlotArea(QWidget):
         logging.info("Text insertion mode cancelled")
 
     def clear_all_axes(self):
-        """Completely clear all plot items and axes"""
+        """Completely clear all plot items and axes - FIXED VERSION"""
         logging.info("Clearing all axes and plot items")
+
+        # ===== CRITICAL FIX: Properly remove items to prevent autoRangeEnabled error =====
+        # Get the main viewbox
+        try:
+            main_viewbox = self.plot_widget.getPlotItem().getViewBox()
+        except:
+            main_viewbox = None
 
         # Remove all plot data items first to prevent viewbox errors
         for item_data in self.plot_items:
             try:
                 curve = item_data.get('curve')
                 viewbox = item_data.get('viewbox')
-                if curve and viewbox:
-                    viewbox.removeItem(curve)
+
+                # Ensure viewbox is valid
+                if curve and viewbox and isinstance(viewbox, pg.ViewBox):
+                    try:
+                        viewbox.removeItem(curve)
+                    except:
+                        # Fallback to main viewbox if stored viewbox fails
+                        if main_viewbox:
+                            try:
+                                main_viewbox.removeItem(curve)
+                            except:
+                                pass
             except Exception as e:
                 logging.warning(f"Error removing curve from viewbox: {e}")
 
@@ -1262,13 +1286,17 @@ class PlotArea(QWidget):
         if hasattr(self, 'y_axes'):
             for viewbox in self.y_axes:
                 try:
+                    # Verify it's actually a ViewBox
+                    if not isinstance(viewbox, pg.ViewBox):
+                        continue
+
                     # Remove all items from viewbox first
                     for item in list(viewbox.allChildren()):
                         try:
                             viewbox.removeItem(item)
                         except:
                             pass
-                    
+
                     # Then remove viewbox from scene
                     if viewbox.scene() is not None:
                         self.plot_widget.scene().removeItem(viewbox)
@@ -1276,27 +1304,30 @@ class PlotArea(QWidget):
                     logging.warning(f"Error removing viewbox: {e}")
 
         # Remove all axis items from layout more carefully
-        layout = self.plot_widget.plotItem.layout
-        items_to_remove = []
-        
-        # Collect items to remove (avoid modifying during iteration)
-        for row in range(layout.rowCount()):
-            for col in range(layout.columnCount()):
+        try:
+            layout = self.plot_widget.plotItem.layout
+            items_to_remove = []
+
+            # Collect items to remove (avoid modifying during iteration)
+            for row in range(layout.rowCount()):
+                for col in range(layout.columnCount()):
+                    try:
+                        item = layout.itemAt(row, col)
+                        if item is not None and isinstance(item, pg.AxisItem):
+                            # Don't remove the main left and bottom axes (positions 2,1 and 3,2)
+                            if not ((row == 2 and col == 1) or (row == 3 and col == 2)):
+                                items_to_remove.append(item)
+                    except:
+                        pass
+
+            # Remove collected items
+            for item in items_to_remove:
                 try:
-                    item = layout.itemAt(row, col)
-                    if item is not None and isinstance(item, pg.AxisItem):
-                        # Don't remove the main left and bottom axes (positions 2,1 and 3,2)
-                        if not ((row == 2 and col == 1) or (row == 3 and col == 2)):
-                            items_to_remove.append(item)
-                except:
-                    pass
-        
-        # Remove collected items
-        for item in items_to_remove:
-            try:
-                layout.removeItem(item)
-            except Exception as e:
-                logging.warning(f"Error removing axis item: {e}")
+                    layout.removeItem(item)
+                except Exception as e:
+                    logging.warning(f"Error removing axis item: {e}")
+        except Exception as e:
+            logging.warning(f"Error clearing axis layout: {e}")
 
         # Reset storage
         self.plot_items = []
