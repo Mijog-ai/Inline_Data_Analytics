@@ -128,6 +128,11 @@ class MainWindow(QMainWindow):
 
                 self.current_file = file_path
                 self.tool_bar.update_file_name(self.current_file)
+
+                # Set default title to filename without extension
+                filename_without_ext = os.path.splitext(os.path.basename(file_path))[0]
+                self.right_panel.plot_area.set_default_title(filename_without_ext)
+
                 logging.info(f"File loaded successfully. Shape: {self.df.shape}")
                 QMessageBox.information(self, "Success", "File loaded successfully!")
             except Exception as e:

@@ -929,6 +929,14 @@ class PlotArea(QWidget):
             self.last_plot_params['title'] = ""
         self.plot_widget.setTitle("")
 
+    def set_default_title(self, title):
+        """Set the default title in the input field and apply it"""
+        self.title_input.setText(title)
+        self.current_title = title
+        self.plot_widget.setTitle(title)
+        if hasattr(self, 'last_plot_params'):
+            self.last_plot_params['title'] = title
+
     def enable_insertion(self, text):
         self.text_insertion_mode = True
         self.pending_text= text
