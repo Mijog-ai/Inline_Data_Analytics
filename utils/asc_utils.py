@@ -75,7 +75,8 @@ def load_and_process_asc_file(file_name):
     except Exception as e:
         logging.error(f"Error loading ASC file: {str(e)}")
         if content:
-            logging.error(f"File content (first 10 lines): {content.split('\n')[:10]}")
+            lines = content.split('\n')[:10]
+            logging.error(f"File content (first 10 lines): {lines}")
         else:
             logging.error("Unable to read file content")
         raise

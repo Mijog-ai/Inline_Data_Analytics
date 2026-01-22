@@ -1,51 +1,47 @@
 import logging
 import traceback
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QCheckBox, QHBoxLayout, QLabel, QLineEdit, QPushButton
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
+from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtCore import QUrl
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from utils.asc_utils import apply_smoothing
-import mplcursors
-import matplotlib.colors as mcolors
 import numpy as np
-import matplotlib.pyplot as plt
+import tempfile
+import os
 
 
 class PlotArea(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
-        self.cursor = None
         self.show_cursor = True
         self.show_legend = True
         self.yaxis_approx_value_highlighter = True
+        self.show_original_data = True
         self.setup_ui()
-        self.vertical_lines = []  # Changed to list to store multiple lines
 
-        self.original_lines = []
-        self.smoothed_lines = []
+        # Store plot state
+        self.vertical_lines = []
+        self.annotations_list = []
         self.current_title = ""
+        self.current_figure = None
 
     def setup_ui(self):
-
         # Add title input and buttons
         title_layout = QHBoxLayout()
         self.title_input = QLineEdit()
         self.title_input.setPlaceholderText("Enter plot title")
         self.set_title_button = QPushButton("Set Title")
         self.set_title_button.clicked.connect(self.set_title)
-        # self.update_title_button = QPushButton("Update Title")
-        # self.update_title_button.clicked.connect(self.update_title)
         title_layout.addWidget(self.title_input)
         title_layout.addWidget(self.set_title_button)
-        # title_layout.addWidget(self.update_title_button)
         self.layout.addLayout(title_layout)
 
-        self.figure = Figure(figsize=(5, 4), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        self.toolbar = NavigationToolbar(self.canvas, self)
+        # Create web view for Plotly
+        self.web_view = QWebEngineView()
 
-        # Add checkboxes for cursor and legend toggle
+        # Add checkboxes for control
         checkbox_layout = QHBoxLayout()
         self.cursor_checkbox = QCheckBox("Show Cursor")
         self.cursor_checkbox.setChecked(True)
@@ -69,9 +65,7 @@ class PlotArea(QWidget):
         checkbox_layout.addWidget(self.show_original_checkbox)
 
         self.layout.addLayout(checkbox_layout)
-        self.layout.addWidget(self.toolbar)
-        self.layout.addWidget(self.canvas)
-
+        self.layout.addWidget(self.web_view)
         self.setLayout(self.layout)
 
     def toggle_highlighter(self, state):
@@ -88,7 +82,6 @@ class PlotArea(QWidget):
 
     def update_plot(self):
         # This method should be called whenever the plot needs to be updated
-        # It will use the current state of show_cursor and show_legend
         if hasattr(self, 'last_plot_params'):
             self.plot_data(**self.last_plot_params)
 
@@ -98,56 +91,47 @@ class PlotArea(QWidget):
                 self.current_title = title
             else:
                 title = self.current_title
-            logging.info(f"Plotting data: x={x_column}, y={y_columns}, title= {title}")
-            self.figure.clear()
 
-            ax = self.figure.add_subplot(111)
-            axes = [ax]
+            logging.info(f"Plotting data: x={x_column}, y={y_columns}, title={title}")
 
-            # Generate a color map with distinct colors
+            # Generate distinct colors
             n_colors = len(y_columns)
-            color_map = plt.cm.get_cmap('jet')(np.linspace(0, 1, n_colors))
+            colors = self._generate_colors(n_colors)
 
-            self.original_lines = []
-            self.smoothed_lines = []
+            # Create figure with secondary y-axes
+            fig = go.Figure()
 
-            lines = []  # Store line objects for cursor
+            # Track which traces belong to which y-axis
+            self.trace_info = []
 
-            for i, (y_column, base_color) in enumerate(zip(y_columns, color_map)):
+            # Plot each y-column
+            for i, (y_column, color) in enumerate(zip(y_columns, colors)):
                 logging.debug(f"Plotting column: {y_column}")
-                if i > 0:
-                    new_ax = ax.twinx()
-                    new_ax.spines['right'].set_visible(True)
-                    if i % 2 == 0:  # Even indices (2, 4, 6, ...) go to the left side
-                        new_ax.spines['right'].set_visible(False)
-                        new_ax.spines['left'].set_position(('axes', -0.1 * (i // 2)))
-                        new_ax.yaxis.set_label_position('left')
-                        new_ax.yaxis.set_ticks_position('left')
-                    else:  # Odd indices (1, 3, 5, ...) go to the right side
-                        new_ax.spines['left'].set_visible(False)
-                        new_ax.spines['right'].set_position(('axes', 1 + 0.1 * ((i - 1) // 2)))
-                        new_ax.yaxis.set_label_position('right')
-                        new_ax.yaxis.set_ticks_position('right')
-                    axes.append(new_ax)
-                else:
-                    new_ax = ax
 
-                x_data = df[x_column]
-                y_data = df[y_column]
+                x_data = df[x_column].values
+                y_data = df[y_column].values
 
-                # Set the opacity based on whether smoothing is applied
+                # Determine which y-axis to use
+                yaxis_name = 'y' if i == 0 else f'y{i+1}'
+
+                # Plot original data
                 if smoothing_params['apply']:
-                    original_color = mcolors.to_rgba(base_color, alpha=0.3)
-                    smoothed_color = mcolors.to_rgba(base_color, alpha=1.0)
-                else:
-                    original_color = mcolors.to_rgba(base_color, alpha=1.0)
+                    # Original data with transparency
+                    fig.add_trace(go.Scatter(
+                        x=x_data,
+                        y=y_data,
+                        mode='lines',
+                        name=f'{y_column} (Original)',
+                        line=dict(color=color, width=1),
+                        opacity=0.3,
+                        yaxis=yaxis_name,
+                        visible=self.show_original_data,
+                        showlegend=self.show_legend,
+                        hovertemplate=f'{x_column}: %{{x:.2f}}<br>{y_column}: %{{y:.2f}}<extra></extra>'
+                    ))
+                    self.trace_info.append({'type': 'original', 'y_column': y_column, 'yaxis': yaxis_name})
 
-                original_line, = new_ax.plot(x_data, y_data, color=original_color, label=f'{y_column} (Original)')
-                self.original_lines.append(original_line)
-                lines.append(original_line)
-
-                if smoothing_params['apply']:
-                    logging.debug(f"Applying smoothing: {smoothing_params}")
+                    # Smoothed data
                     y_smoothed = apply_smoothing(
                         y_data,
                         method=smoothing_params['method'],
@@ -155,59 +139,130 @@ class PlotArea(QWidget):
                         poly_order=smoothing_params['poly_order'],
                         sigma=smoothing_params['sigma']
                     )
-                    smoothed_line, = new_ax.plot(x_data, y_smoothed, color=smoothed_color,
-                                                 label=f'{y_column} (Smoothed)')
-                    self.smoothed_lines.append(smoothed_line)
-                    lines.append(smoothed_line)
+                    fig.add_trace(go.Scatter(
+                        x=x_data,
+                        y=y_smoothed,
+                        mode='lines',
+                        name=f'{y_column} (Smoothed)',
+                        line=dict(color=color, width=2),
+                        yaxis=yaxis_name,
+                        showlegend=self.show_legend,
+                        hovertemplate=f'{x_column}: %{{x:.2f}}<br>{y_column} (Smoothed): %{{y:.2f}}<extra></extra>'
+                    ))
+                    self.trace_info.append({'type': 'smoothed', 'y_column': y_column, 'yaxis': yaxis_name})
+                else:
+                    # Only original data
+                    fig.add_trace(go.Scatter(
+                        x=x_data,
+                        y=y_data,
+                        mode='lines',
+                        name=y_column,
+                        line=dict(color=color, width=2),
+                        yaxis=yaxis_name,
+                        showlegend=self.show_legend,
+                        hovertemplate=f'{x_column}: %{{x:.2f}}<br>{y_column}: %{{y:.2f}}<extra></extra>'
+                    ))
+                    self.trace_info.append({'type': 'data', 'y_column': y_column, 'yaxis': yaxis_name})
 
-                new_ax.set_ylabel(y_column, color=base_color)
-                new_ax.tick_params(axis='y', colors=base_color)
-                if self.show_legend:
-                    new_ax.legend(loc='upper left')
+            # Configure layout with multiple y-axes
+            layout_config = {
+                'title': title,
+                'xaxis': {'title': x_column},
+                'hovermode': 'closest' if self.show_cursor else False,
+                'showlegend': self.show_legend,
+                'height': 600,
+            }
 
-            ax.set_xlabel(x_column)
-            ax.set_title(title)
+            # Add y-axes configuration
+            for i, (y_column, color) in enumerate(zip(y_columns, colors)):
+                if i == 0:
+                    layout_config['yaxis'] = {
+                        'title': {'text': y_column, 'font': {'color': color}},
+                        'tickfont': {'color': color}
+                    }
+                else:
+                    yaxis_key = f'yaxis{i+1}'
+                    if i % 2 == 1:  # Odd indices on the right
+                        layout_config[yaxis_key] = {
+                            'title': {'text': y_column, 'font': {'color': color}},
+                            'tickfont': {'color': color},
+                            'anchor': 'free' if i > 1 else 'x',
+                            'overlaying': 'y',
+                            'side': 'right',
+                            'position': 1.0 if i == 1 else 1.0 + 0.1 * ((i - 1) // 2)
+                        }
+                    else:  # Even indices on the left
+                        layout_config[yaxis_key] = {
+                            'title': {'text': y_column, 'font': {'color': color}},
+                            'tickfont': {'color': color},
+                            'anchor': 'free',
+                            'overlaying': 'y',
+                            'side': 'left',
+                            'position': 0.0 - 0.1 * (i // 2)
+                        }
 
-            # Add limit lines
+            fig.update_layout(**layout_config)
+
+            # Add limit lines (shapes)
+            shapes = []
             for line in limit_lines:
                 if line['type'] == 'vertical':
-                    ax.axvline(x=line['value'], color='black', linestyle='--',
-                               label=f'Vertical Line at x={line["value"]}')
+                    shapes.append({
+                        'type': 'line',
+                        'x0': line['value'],
+                        'x1': line['value'],
+                        'y0': 0,
+                        'y1': 1,
+                        'yref': 'paper',
+                        'line': {'color': 'black', 'width': 2, 'dash': 'dash'}
+                    })
                 else:
-                    ax.axhline(y=line['value'], color='black', linestyle='--',
-                               label=f'Horizontal Line at y={line["value"]}')
+                    shapes.append({
+                        'type': 'line',
+                        'x0': 0,
+                        'x1': 1,
+                        'xref': 'paper',
+                        'y0': line['value'],
+                        'y1': line['value'],
+                        'line': {'color': 'black', 'width': 2, 'dash': 'dash'}
+                    })
 
-            self.figure.tight_layout()
+            if shapes:
+                fig.update_layout(shapes=shapes)
 
-            # Add snapping cursor if enabled
-            if self.show_cursor:
-                self.cursor = mplcursors.cursor(lines, hover=True)
+            # Configure interactivity
+            config = {
+                'displayModeBar': True,
+                'displaylogo': False,
+                'modeBarButtonsToAdd': ['drawline', 'drawopenpath', 'eraseshape'],
+                'modeBarButtonsToRemove': [],
+                'toImageButtonOptions': {
+                    'format': 'png',
+                    'filename': 'plot',
+                    'height': 800,
+                    'width': 1200,
+                    'scale': 2
+                }
+            }
 
-                @self.cursor.connect("add")
-                def on_add(sel):
-                    x, y = sel.target
-                    ax = sel.artist.axes
-                    xlabel = ax.get_xlabel()
-                    ylabel = ax.get_ylabel()
-                    sel.annotation.set_text(f"{xlabel}: {x:.2f}\n{ylabel}: {y:.2f}")
-                    sel.annotation.get_bbox_patch().set(fc="white", alpha=0.8)
-            else:
-                if hasattr(self, 'cursor') and self.cursor:
-                    self.cursor.remove()
-                    self.cursor = None
-
+            # Add click event handling if highlighting is enabled
             if self.yaxis_approx_value_highlighter:
-                self.canvas.mpl_connect('button_press_event', self.on_click)
+                # Add JavaScript for click handling
+                fig.update_layout(
+                    clickmode='event+select'
+                )
 
-            # Apply the current state of the show_original_checkbox only if smoothing is applied
-            if smoothing_params['apply']:
-                self.toggle_original_data()
-            else:
-                # If smoothing is not applied, ensure all original lines are visible
-                for line in self.original_lines:
-                    line.set_visible(True)
+            # Store the figure
+            self.current_figure = fig
 
-            self.canvas.draw()
+            # Create temporary HTML file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w')
+            fig.write_html(temp_file.name, config=config)
+            temp_file.close()
+
+            # Load in web view
+            self.web_view.setUrl(QUrl.fromLocalFile(temp_file.name))
+
             logging.info("Plot completed successfully")
 
             # Store the last plot parameters for later updates
@@ -225,72 +280,74 @@ class PlotArea(QWidget):
             logging.error(traceback.format_exc())
             QMessageBox.critical(self, "Error", f"An error occurred while plotting: {str(e)}")
 
-    # def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type, x_label, y_label):
-    #     try:
-    #         logging.info(f"Applying {fit_type} curve fitting to plot")
-    #         ax = self.figure.gca()
-    #
-    #         # Clear previous plots
-    #         ax.clear()
-    #
-    #         # Plot the original data
-    #         ax.plot(x_data, y_data, 'b-', label='Original Data')
-    #
-    #         # Generate points for the fitted curve
-    #         x_fit = np.linspace(np.min(x_data), np.max(x_data), 500)
-    #         y_fit = fit_func(x_fit)
-    #
-    #         # Plot the fitted curve
-    #         ax.plot(x_fit, y_fit, 'r-', label=f'Fitted Curve: {equation}')
-    #
-    #         ax.legend()
-    #         ax.set_title(f'Data with {fit_type} Fit')
-    #         ax.set_xlabel(x_label)
-    #         ax.set_ylabel(y_label)
-    #
-    #         # Toggeling original data on smoothing
-    #         self.toggle_original_data()
-    #
-    #         self.canvas.draw()
-    #         logging.info(f"{fit_type} curve fitting applied to plot successfully")
-    #     except Exception as e:
-    #         logging.error(f"Error in apply_curve_fitting: {str(e)}")
-    #         logging.error(traceback.format_exc())
-    #         QMessageBox.critical(self, "Error", f"An error occurred while applying curve fit: {str(e)}")
+    def _generate_colors(self, n):
+        """Generate n distinct colors using jet colormap"""
+        import matplotlib.cm as cm
+        import matplotlib.colors as mcolors
+
+        # Use the new API to avoid deprecation warning
+        cmap = cm.colormaps.get_cmap('jet')
+        colors_rgba = [cmap(i / (n - 1) if n > 1 else 0.5) for i in range(n)]
+        colors_hex = [mcolors.rgb2hex(c[:3]) for c in colors_rgba]
+        return colors_hex
 
     def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type, x_label, y_label):
         try:
             logging.info(f"Applying {fit_type} curve fitting to plot")
-            ax = self.figure.gca()
 
-            # Find and update the existing line for this y_column
-            line_found = False
-            for line in ax.get_lines():
-                # Check if this line corresponds to the y_column we're fitting
-                if hasattr(line, '_y_column') and line._y_column == y_label:
-                    # Update the existing line with fitted data
-                    x_fit = np.linspace(np.min(x_data), np.max(x_data), len(x_data))
-                    y_fit = fit_func(x_fit)
+            if not self.current_figure or not hasattr(self, 'last_plot_params'):
+                logging.warning("No existing plot to apply curve fitting")
+                return
 
-                    line.set_xdata(x_fit)
-                    line.set_ydata(y_fit)
-                    line.set_label(f'{y_label} ({fit_type} Fit)')
-                    line._is_fitted = True
-                    line._fit_type = fit_type
-                    line._fit_equation = equation
+            # Generate fitted curve
+            x_fit = np.linspace(np.min(x_data), np.max(x_data), 500)
+            y_fit = fit_func(x_fit)
 
-                    line_found = True
-                    logging.info(f"Updated existing line with {fit_type} fit")
+            # Find the corresponding y-axis for this y_label
+            yaxis_name = 'y'
+            for info in self.trace_info:
+                if info['y_column'] == y_label:
+                    yaxis_name = info['yaxis']
                     break
 
-            if not line_found:
-                logging.warning(f"No existing line found for {y_label}")
+            # Get color for this y_column
+            y_columns = self.last_plot_params['y_columns']
+            if y_label in y_columns:
+                idx = y_columns.index(y_label)
+                colors = self._generate_colors(len(y_columns))
+                color = colors[idx]
+            else:
+                color = 'red'
 
-            # Update legend and redraw
-            ax.legend()
-            ax.set_title(f'{ax.get_title()} - {fit_type} Fit Applied')
+            # Add fitted curve as a new trace
+            self.current_figure.add_trace(go.Scatter(
+                x=x_fit,
+                y=y_fit,
+                mode='lines',
+                name=f'{y_label} ({fit_type} Fit)',
+                line=dict(color=color, width=2, dash='dot'),
+                yaxis=yaxis_name,
+                showlegend=self.show_legend,
+                hovertemplate=f'{fit_type} Fit<br>Equation: {equation}<br>x: %{{x:.2f}}<br>y: %{{y:.2f}}<extra></extra>'
+            ))
 
-            self.canvas.draw()
+            # Update the plot
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w')
+            config = {
+                'displayModeBar': True,
+                'displaylogo': False,
+                'toImageButtonOptions': {
+                    'format': 'png',
+                    'filename': 'plot',
+                    'height': 800,
+                    'width': 1200,
+                    'scale': 2
+                }
+            }
+            self.current_figure.write_html(temp_file.name, config=config)
+            temp_file.close()
+            self.web_view.setUrl(QUrl.fromLocalFile(temp_file.name))
+
             logging.info(f"{fit_type} curve fitting applied successfully")
 
         except Exception as e:
@@ -301,190 +358,80 @@ class PlotArea(QWidget):
     def remove_curve_fitting(self, y_label=None):
         """Remove curve fitting and restore original data"""
         try:
-            ax = self.figure.gca()
-            main_window = self.window()
+            if not self.current_figure:
+                return
 
-            # Get original data from filtered_df
-            x_column = main_window.left_panel.axis_selection.x_combo.currentText()
-            x_data = main_window.filtered_df[x_column].values
+            # Rebuild the plot without fitted curves
+            if hasattr(self, 'last_plot_params'):
+                self.plot_data(**self.last_plot_params)
 
-            for line in ax.get_lines():
-                if hasattr(line, '_is_fitted') and line._is_fitted:
-                    if y_label is None or (hasattr(line, '_y_column') and line._y_column == y_label):
-                        # Restore original data
-                        y_column = line._y_column
-                        y_data = main_window.filtered_df[y_column].values
-
-                        line.set_xdata(x_data)
-                        line.set_ydata(y_data)
-                        line.set_label(y_column)
-                        line._is_fitted = False
-
-            ax.legend()
-            self.canvas.draw()
+            logging.info("Curve fitting removed successfully")
 
         except Exception as e:
             logging.error(f"Error removing curve fitting: {str(e)}")
 
     def clear(self):
-        self.text_edit.clear()
-
-    def on_click(self, event):
-        if event.inaxes:
-            x = event.xdata
-
-            if event.button == 1:  # Left click - add line and points
-                self.add_highlight(x)
-
-                # Get x-axis label - use multiple fallback options
-                xlabel = event.inaxes.get_xlabel()
-                if not xlabel:  # If xlabel is empty, try to get it from stored params
-                    xlabel = self.last_plot_params.get('x_column', 'X')
-
-                # Collect all Y values from visible lines at this X position
-                annotation_text = f"{xlabel}: {x:.2f}\n"
-
-                for line in self.original_lines + self.smoothed_lines:
-                    if line.get_visible():
-                        xdata = line.get_xdata()
-                        ydata = line.get_ydata()
-
-                        # Find nearest X value
-                        idx = np.argmin(np.abs(xdata - x))
-                        nearest_x = xdata[idx]
-                        nearest_y = ydata[idx]
-
-                        if line.axes is not None:
-                            ylabel = line.axes.get_ylabel()
-
-                            # If ylabel is empty, try to get it from the line's label or other sources
-                            if not ylabel or ylabel.strip() == "":
-                                # Option 1: Use the line's label
-                                ylabel = line.get_label()
-
-                                # Option 2: If line label is also empty or default, use a fallback
-                                if not ylabel or ylabel.startswith('_'):
-                                    # Try to get from the data column name stored elsewhere
-                                    # or use a generic label
-                                    ylabel = "Y-axis"
-                        else:
-                            ylabel = "Unknown"
-
-
-                        annotation_text += f"{ylabel}: {nearest_y:.2f}\n"
-
-                # Add persistent annotation box
-                annotation = event.inaxes.annotate(
-                    annotation_text.strip(),
-                    xy=(x, event.ydata),
-                    xytext=(10, 10),
-                    textcoords='offset points',
-                    bbox=dict(boxstyle='round', fc='white', alpha=0.8, edgecolor='black'),
-                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
-                )
-
-                # Store annotation for later removal if needed
-                if not hasattr(self, 'annotations'):
-                    self.annotations = []
-                self.annotations.append(annotation)
-                self.canvas.draw()
-
-            elif event.button == 3:  # Right click - remove nearest line, points, and annotation
-                self.remove_nearest_highlight(x)
-
-                # Remove the nearest annotation
-                if hasattr(self, 'annotations') and self.annotations:
-                    # Find and remove the nearest annotation to the click
-                    min_dist = float('inf')
-                    nearest_annotation = None
-
-                    for ann in self.annotations:
-                        ann_x = ann.xy[0]
-                        dist = abs(ann_x - x)
-                        if dist < min_dist:
-                            min_dist = dist
-                            nearest_annotation = ann
-
-                    if nearest_annotation:
-                        nearest_annotation.remove()
-                        self.annotations.remove(nearest_annotation)
-                        self.canvas.draw()
+        """Clear the plot area"""
+        self.clear_plot()
 
     def add_highlight(self, x):
-        # Add new vertical line
-        vertical_line = self.figure.axes[0].axvline(x, color='gray', linestyle='--')
+        """Add vertical line and highlight points at x position"""
+        if not self.current_figure:
+            return
 
-        # Create list to store highlight points for this vertical line
-        points_group = []
+        # Add vertical line as shape
+        self.current_figure.add_shape(
+            type='line',
+            x0=x,
+            x1=x,
+            y0=0,
+            y1=1,
+            yref='paper',
+            line=dict(color='gray', width=2, dash='dash')
+        )
 
-        # Highlight points on each axis
-        for ax in self.figure.axes:
-            for line in ax.lines:
-                # Only process lines that are actual data (not vertical lines, not markers)
-                # Data lines typically have linestyle '-' and no marker or empty marker
-                linestyle = line.get_linestyle()
-                marker = line.get_marker()
+        # Store the x position
+        self.vertical_lines.append(x)
 
-                # Skip vertical/horizontal reference lines (dashed lines)
-                if linestyle in ['--', '-.', ':']:
-                    continue
-
-                # Skip if this is already a highlight point (has 'o' marker)
-                if marker == 'o':
-                    continue
-
-                xdata = line.get_xdata()
-                ydata = line.get_ydata()
-
-                # Check if xdata and ydata have valid lengths
-                if len(xdata) == 0 or len(ydata) == 0:
-                    continue
-
-                # Find the closest point to the clicked x position
-                index = np.argmin(np.abs(xdata - x))
-
-                # Plot the highlight point at the actual data point location
-                highlight = ax.plot(xdata[index], ydata[index], 'o', color='red', markersize=8, zorder=10)[0]
-                points_group.append(highlight)
-
-        # Store the vertical line and its associated points as a tuple
-        self.vertical_lines.append((x, vertical_line, points_group))
-
-        self.canvas.draw()
+        # Redraw
+        self._redraw_plot()
 
     def remove_nearest_highlight(self, x):
-        # Find and remove the nearest vertical line and its points
+        """Remove the nearest vertical line to x position"""
         if not self.vertical_lines:
             return
 
-        # Find the nearest vertical line
-        distances = [abs(vline[0] - x) for vline in self.vertical_lines]
-        nearest_index = np.argmin(distances)
+        # Find nearest line
+        distances = [abs(vx - x) for vx in self.vertical_lines]
+        nearest_idx = np.argmin(distances)
 
-        # Remove the line and points
-        _, vertical_line, points_group = self.vertical_lines[nearest_index]
-        vertical_line.remove()
-        for point in points_group:
-            point.remove()
+        # Remove from list
+        self.vertical_lines.pop(nearest_idx)
 
-        # Remove from the list
-        self.vertical_lines.pop(nearest_index)
+        # Rebuild plot with remaining lines
+        if hasattr(self, 'last_plot_params'):
+            self.plot_data(**self.last_plot_params)
 
-        self.canvas.draw()
+    def _redraw_plot(self):
+        """Redraw the current plot"""
+        if not self.current_figure:
+            return
 
-    def highlight_point(self, x):
-        # This method is kept for backward compatibility if needed elsewhere
-        # It now calls add_highlight instead
-        self.add_highlight(x)
-
-    # def update_title(self):
-    #     if hasattr(self, 'figure') and self.figure.axes:
-    #         title = self.title_input.text()
-    #         self.figure.axes[0].set_title(title)
-    #         self.canvas.draw()
-    #         self.current_title = title
-    #         if hasattr(self, 'last_plot_params'):
-    #             self.last_plot_params['title'] = title
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w')
+        config = {
+            'displayModeBar': True,
+            'displaylogo': False,
+            'toImageButtonOptions': {
+                'format': 'png',
+                'filename': 'plot',
+                'height': 800,
+                'width': 1200,
+                'scale': 2
+            }
+        }
+        self.current_figure.write_html(temp_file.name, config=config)
+        temp_file.close()
+        self.web_view.setUrl(QUrl.fromLocalFile(temp_file.name))
 
     def set_title(self):
         title = self.title_input.text()
@@ -494,12 +441,9 @@ class PlotArea(QWidget):
             self.update_plot()
 
     def toggle_original_data(self):
-        show_original = self.show_original_checkbox.isChecked()
-        logging.info(f"Toggling original data visibility: {show_original}")
-        for line in self.original_lines:
-            line.set_visible(show_original)
-        self.canvas.draw_idle()  # Use draw_idle() instead of draw() for better performance
-        logging.info("Original data visibility toggled")
+        self.show_original_data = self.show_original_checkbox.isChecked()
+        logging.info(f"Toggling original data visibility: {self.show_original_data}")
+        self.update_plot()
 
     def get_show_original_state(self):
         return self.show_original_checkbox.isChecked()
@@ -510,23 +454,31 @@ class PlotArea(QWidget):
 
     def clear_plot(self):
         logging.info("Clearing plot in PlotArea")
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
-        ax.set_title("No data to display")
-        ax.set_xlabel("X-axis")
-        ax.set_ylabel("Y-axis")
-        self.canvas.draw()
+
+        # Create empty figure
+        fig = go.Figure()
+        fig.update_layout(
+            title="No data to display",
+            xaxis_title="X-axis",
+            yaxis_title="Y-axis"
+        )
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w')
+        fig.write_html(temp_file.name)
+        temp_file.close()
+        self.web_view.setUrl(QUrl.fromLocalFile(temp_file.name))
+
         self.reset_title()
-        # Clear vertical lines list when plot is cleared
         self.vertical_lines = []
+        self.annotations_list = []
+        self.current_figure = None
 
     def reset_title(self):
         self.current_title = ""
-        self.title_input.clear()  # Clear the title input field
+        self.title_input.clear()
         if hasattr(self, 'last_plot_params'):
             self.last_plot_params['title'] = ""
 
-        # Clear the plot title if there's an existing plot
-        if hasattr(self, 'figure') and self.figure.axes:
-            self.figure.axes[0].set_title("")
-            self.canvas.draw()
+    def highlight_point(self, x):
+        """Compatibility method for backward compatibility"""
+        self.add_highlight(x)
