@@ -216,25 +216,30 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"An error occurred while saving the data: {str(e)}")
 
     def save_plot(self):
-        if not hasattr(self.right_panel.plot_area, 'figure') or len(self.right_panel.plot_area.figure.axes) == 0:
+        # Check if a plot exists by verifying plot_items or last_plot_params
+        if not hasattr(self.right_panel.plot_area, 'plot_items') or len(self.right_panel.plot_area.plot_items) == 0:
             QMessageBox.warning(self, "Warning", "No plot to save. Please create a plot first.")
             return
 
         default_name = os.path.splitext(os.path.basename(self.current_file))[0] if self.current_file else "plot"
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Plot", default_name, "PNG Files (*.png);;PDF Files (*.pdf)")
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save Plot", default_name, "PNG Files (*.png)")
         if file_name:
             try:
-                fig = self.right_panel.plot_area.figure
+                # Use PyQtGraph's ImageExporter to save the plot
+                import pyqtgraph.exporters
 
-                # Get comments from the comment box
-                comments = self.left_panel.comment_box.get_comments()
-                if comments:
-                    fig.text(0.1, 0.01, comments, wrap=True, fontsize=8, va='bottom')
+                exporter = pyqtgraph.exporters.ImageExporter(self.right_panel.plot_area.plot_widget.plotItem)
 
-                # Save the figure
-                fig.savefig(file_name, dpi=300, bbox_inches='tight')
+                # Ensure the file has .png extension
+                if not file_name.endswith('.png'):
+                    file_name += '.png'
+
+                # Export the plot
+                exporter.export(file_name)
+
                 QMessageBox.information(self, "Success", "Plot saved successfully!")
             except Exception as e:
+                logging.error(f"Error saving plot: {str(e)}")
                 QMessageBox.critical(self, "Error", f"An error occurred while saving the plot: {str(e)}")
 
     def export_table_to_excel(self):
