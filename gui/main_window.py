@@ -70,9 +70,13 @@ class MainWindow(QMainWindow):
         self.left_panel.curve_fitting.reset()
         self.left_panel.comment_box.clear()
 
-        # Reset RightPanel
+        # Reset RightPanel - clear plot first to prevent errors
         self.right_panel.plot_area.clear_plot()
         self.right_panel.statistics_area.clear_stats()
+        
+        # Reset toolbar file name
+        self.tool_bar.update_file_name(None)
+        self.current_file = None
 
     def load_file(self, file_path=None):
         print("load_file method called in MainWindow")

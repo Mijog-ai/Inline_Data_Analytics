@@ -140,9 +140,14 @@ class SessionManager:
                     return  # User cancelled, don't create a new session
 
             # Clear everything and create a new session
+            # First clear the plot to prevent viewbox errors
+            self.main_window.right_panel.plot_area.clear_plot()
+            
+            # Then clear all data
             self.main_window.clear_all_data()
+            
+            # Reset UI components
             self.main_window.reset_ui()
-            self.main_window.update_plot()
 
             QMessageBox.information(self.main_window, "New Session", "A new session has been created.")
             logging.info("New session created successfully")
