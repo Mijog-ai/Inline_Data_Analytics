@@ -1,9 +1,13 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem
+import hashlib
+import pickle
 
 class StatisticsArea(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
+        self._stats_cache = {}  # Cache for computed statistics
+        self._last_df_hash = None  # Hash of last dataframe to detect changes
         self.setup_ui()
 
     def setup_ui(self):
@@ -13,15 +17,29 @@ class StatisticsArea(QWidget):
         self.layout.addWidget(self.stats_table)
 
     def update_stats(self, df):
+        """Update statistics with caching to avoid redundant calculations"""
         if df is not None:
+            # Create a hash of the dataframe to detect if it has changed
+            df_hash = hashlib.md5(pickle.dumps(df.values.tobytes())).hexdigest()
+
+            # Check if we already computed stats for this exact dataframe
+            if df_hash == self._last_df_hash and self._stats_cache:
+                # Use cached statistics
+                return
+
+            # Compute statistics (only if data changed)
             stats = df.describe().transpose()
+            self._last_df_hash = df_hash
+            self._stats_cache = stats
+
+            # Update table
             self.stats_table.setRowCount(len(stats))
             for i, (index, row) in enumerate(stats.iterrows()):
                 self.stats_table.setItem(i, 0, QTableWidgetItem(str(index)))
-                self.stats_table.setItem(i, 1, QTableWidgetItem(str(row['max'])))
-                self.stats_table.setItem(i, 2, QTableWidgetItem(str(row['mean'])))
-                self.stats_table.setItem(i, 3, QTableWidgetItem(str(row['min'])))
-                self.stats_table.setItem(i, 4, QTableWidgetItem(str(row['std'])))
+                self.stats_table.setItem(i, 1, QTableWidgetItem(f"{row['max']:.4f}"))
+                self.stats_table.setItem(i, 2, QTableWidgetItem(f"{row['mean']:.4f}"))
+                self.stats_table.setItem(i, 3, QTableWidgetItem(f"{row['min']:.4f}"))
+                self.stats_table.setItem(i, 4, QTableWidgetItem(f"{row['std']:.4f}"))
             self.stats_table.resizeColumnsToContents()
 
     def get_stats(self):
@@ -47,4 +65,7 @@ class StatisticsArea(QWidget):
         self.stats_table.resizeColumnsToContents()
 
     def clear_stats(self):
+        """Clear statistics and cache"""
         self.stats_table.setRowCount(0)
+        self._stats_cache = {}
+        self._last_df_hash = None
