@@ -264,10 +264,69 @@ class PlotArea(QWidget):
     def on_click(self, event):
         if event.inaxes:
             x = event.xdata
+
             if event.button == 1:  # Left click - add line and points
                 self.add_highlight(x)
-            elif event.button == 3:  # Right click - remove nearest line and points
+
+                # Get x-axis label - use multiple fallback options
+                xlabel = event.inaxes.get_xlabel()
+                if not xlabel:  # If xlabel is empty, try to get it from stored params
+                    xlabel = self.last_plot_params.get('x_column', 'X')
+
+                # Collect all Y values from visible lines at this X position
+                annotation_text = f"{xlabel}: {x:.2f}\n"
+
+                for line in self.original_lines + self.smoothed_lines:
+                    if line.get_visible():
+                        xdata = line.get_xdata()
+                        ydata = line.get_ydata()
+
+                        # Find nearest X value
+                        idx = np.argmin(np.abs(xdata - x))
+                        nearest_x = xdata[idx]
+                        nearest_y = ydata[idx]
+
+                        # Get the Y-axis label for this line
+                        ylabel = line.axes.get_ylabel()
+
+                        annotation_text += f"{ylabel}: {nearest_y:.2f}\n"
+
+                # Add persistent annotation box
+                annotation = event.inaxes.annotate(
+                    annotation_text.strip(),
+                    xy=(x, event.ydata),
+                    xytext=(10, 10),
+                    textcoords='offset points',
+                    bbox=dict(boxstyle='round', fc='white', alpha=0.8, edgecolor='black'),
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
+                )
+
+                # Store annotation for later removal if needed
+                if not hasattr(self, 'annotations'):
+                    self.annotations = []
+                self.annotations.append(annotation)
+                self.canvas.draw()
+
+            elif event.button == 3:  # Right click - remove nearest line, points, and annotation
                 self.remove_nearest_highlight(x)
+
+                # Remove the nearest annotation
+                if hasattr(self, 'annotations') and self.annotations:
+                    # Find and remove the nearest annotation to the click
+                    min_dist = float('inf')
+                    nearest_annotation = None
+
+                    for ann in self.annotations:
+                        ann_x = ann.xy[0]
+                        dist = abs(ann_x - x)
+                        if dist < min_dist:
+                            min_dist = dist
+                            nearest_annotation = ann
+
+                    if nearest_annotation:
+                        nearest_annotation.remove()
+                        self.annotations.remove(nearest_annotation)
+                        self.canvas.draw()
 
     def add_highlight(self, x):
         # Add new vertical line
