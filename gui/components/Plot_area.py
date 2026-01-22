@@ -225,38 +225,106 @@ class PlotArea(QWidget):
             logging.error(traceback.format_exc())
             QMessageBox.critical(self, "Error", f"An error occurred while plotting: {str(e)}")
 
-    def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type):
+    # def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type, x_label, y_label):
+    #     try:
+    #         logging.info(f"Applying {fit_type} curve fitting to plot")
+    #         ax = self.figure.gca()
+    #
+    #         # Clear previous plots
+    #         ax.clear()
+    #
+    #         # Plot the original data
+    #         ax.plot(x_data, y_data, 'b-', label='Original Data')
+    #
+    #         # Generate points for the fitted curve
+    #         x_fit = np.linspace(np.min(x_data), np.max(x_data), 500)
+    #         y_fit = fit_func(x_fit)
+    #
+    #         # Plot the fitted curve
+    #         ax.plot(x_fit, y_fit, 'r-', label=f'Fitted Curve: {equation}')
+    #
+    #         ax.legend()
+    #         ax.set_title(f'Data with {fit_type} Fit')
+    #         ax.set_xlabel(x_label)
+    #         ax.set_ylabel(y_label)
+    #
+    #         # Toggeling original data on smoothing
+    #         self.toggle_original_data()
+    #
+    #         self.canvas.draw()
+    #         logging.info(f"{fit_type} curve fitting applied to plot successfully")
+    #     except Exception as e:
+    #         logging.error(f"Error in apply_curve_fitting: {str(e)}")
+    #         logging.error(traceback.format_exc())
+    #         QMessageBox.critical(self, "Error", f"An error occurred while applying curve fit: {str(e)}")
+
+    def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type, x_label, y_label):
         try:
             logging.info(f"Applying {fit_type} curve fitting to plot")
             ax = self.figure.gca()
 
-            # Clear previous plots
-            ax.clear()
+            # Find and update the existing line for this y_column
+            line_found = False
+            for line in ax.get_lines():
+                # Check if this line corresponds to the y_column we're fitting
+                if hasattr(line, '_y_column') and line._y_column == y_label:
+                    # Update the existing line with fitted data
+                    x_fit = np.linspace(np.min(x_data), np.max(x_data), len(x_data))
+                    y_fit = fit_func(x_fit)
 
-            # Plot the original data
-            ax.plot(x_data, y_data, 'b-', label='Original Data')
+                    line.set_xdata(x_fit)
+                    line.set_ydata(y_fit)
+                    line.set_label(f'{y_label} ({fit_type} Fit)')
+                    line._is_fitted = True
+                    line._fit_type = fit_type
+                    line._fit_equation = equation
 
-            # Generate points for the fitted curve
-            x_fit = np.linspace(np.min(x_data), np.max(x_data), 500)
-            y_fit = fit_func(x_fit)
+                    line_found = True
+                    logging.info(f"Updated existing line with {fit_type} fit")
+                    break
 
-            # Plot the fitted curve
-            ax.plot(x_fit, y_fit, 'r-', label=f'Fitted Curve: {equation}')
+            if not line_found:
+                logging.warning(f"No existing line found for {y_label}")
 
+            # Update legend and redraw
             ax.legend()
-            ax.set_title(f'Data with {fit_type} Fit')
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-
-            # Toggeling original data on smoothing
-            self.toggle_original_data()
+            ax.set_title(f'{ax.get_title()} - {fit_type} Fit Applied')
 
             self.canvas.draw()
-            logging.info(f"{fit_type} curve fitting applied to plot successfully")
+            logging.info(f"{fit_type} curve fitting applied successfully")
+
         except Exception as e:
             logging.error(f"Error in apply_curve_fitting: {str(e)}")
             logging.error(traceback.format_exc())
             QMessageBox.critical(self, "Error", f"An error occurred while applying curve fit: {str(e)}")
+
+    def remove_curve_fitting(self, y_label=None):
+        """Remove curve fitting and restore original data"""
+        try:
+            ax = self.figure.gca()
+            main_window = self.window()
+
+            # Get original data from filtered_df
+            x_column = main_window.left_panel.axis_selection.x_combo.currentText()
+            x_data = main_window.filtered_df[x_column].values
+
+            for line in ax.get_lines():
+                if hasattr(line, '_is_fitted') and line._is_fitted:
+                    if y_label is None or (hasattr(line, '_y_column') and line._y_column == y_label):
+                        # Restore original data
+                        y_column = line._y_column
+                        y_data = main_window.filtered_df[y_column].values
+
+                        line.set_xdata(x_data)
+                        line.set_ydata(y_data)
+                        line.set_label(y_column)
+                        line._is_fitted = False
+
+            ax.legend()
+            self.canvas.draw()
+
+        except Exception as e:
+            logging.error(f"Error removing curve fitting: {str(e)}")
 
     def clear(self):
         self.text_edit.clear()
@@ -286,8 +354,22 @@ class PlotArea(QWidget):
                         nearest_x = xdata[idx]
                         nearest_y = ydata[idx]
 
-                        # Get the Y-axis label for this line
-                        ylabel = line.axes.get_ylabel()
+                        if line.axes is not None:
+                            ylabel = line.axes.get_ylabel()
+
+                            # If ylabel is empty, try to get it from the line's label or other sources
+                            if not ylabel or ylabel.strip() == "":
+                                # Option 1: Use the line's label
+                                ylabel = line.get_label()
+
+                                # Option 2: If line label is also empty or default, use a fallback
+                                if not ylabel or ylabel.startswith('_'):
+                                    # Try to get from the data column name stored elsewhere
+                                    # or use a generic label
+                                    ylabel = "Y-axis"
+                        else:
+                            ylabel = "Unknown"
+
 
                         annotation_text += f"{ylabel}: {nearest_y:.2f}\n"
 

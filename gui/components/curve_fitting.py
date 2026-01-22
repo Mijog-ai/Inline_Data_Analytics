@@ -77,7 +77,7 @@ class CurveFitting(QGroupBox):
             logging.info(f"{fit_type} fit successful. Equation: {equation}")
 
             # Plot the results
-            main_window.right_panel.plot_area.apply_curve_fitting(x_data, y_data, fit_func, equation, fit_type)
+            main_window.right_panel.plot_area.apply_curve_fitting(x_data, y_data, fit_func, equation, fit_type, x_column, y_column)
 
             QMessageBox.information(self, "Fit Applied",
                                     f"Applied {fit_type} fit:\n{equation}\nR-squared: {r_squared:.4f}")
@@ -95,10 +95,39 @@ class CurveFitting(QGroupBox):
         return a * np.exp(b * x)
 
     @staticmethod
+    # FIXED CODE:
     def calculate_r_squared(y_true, y_pred):
+        """
+        Calculate R-squared (coefficient of determination).
+
+        Parameters:
+        -----------
+        y_true : array-like
+            True values
+        y_pred : array-like
+            Predicted values
+
+        Returns:
+        --------
+        float : R-squared value, or 0.0 if undefined
+        """
         ss_res = np.sum((y_true - y_pred) ** 2)
-        ss_tot = np.sum((y_true - np.mean(y_true))==2)
-        return 1-(ss_res/ss_tot)
+        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+
+        # Handle edge cases
+        if ss_tot == 0:
+            # All y values are identical, RÂ² is undefined
+            # Return 1.0 if perfect fit, 0.0 otherwise
+            if ss_res == 0:
+                return 1.0
+            else:
+                return 0.0
+
+        r_squared = 1 - (ss_res / ss_tot)
+
+        # Clip to valid range (can be negative for poor fits)
+        # Return as-is for diagnostic purposes, or clip to [0, 1] if needed
+        return r_squared
 
     def reset(self):
         self.fit_type.setCurrentIndex(0)
