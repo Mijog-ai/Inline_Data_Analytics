@@ -397,17 +397,63 @@ class PlotArea(QWidget):
                     y_max = float(np.max(y_data))
                     all_y_ranges.append((y_min, y_max))
 
+            # Determine if we need multiple Y-axes based on data range differences
+            use_multiple_axes = False
+            if len(all_y_ranges) > 1:
+                # Calculate the ratio between the largest and smallest ranges
+                ranges = [(y_max - y_min) for y_min, y_max in all_y_ranges]
+                max_range = max(ranges)
+                min_range = min(ranges) if min(ranges) > 0 else 1
+
+                # If ranges differ by more than 10x, use separate axes
+                if max_range / min_range > 10:
+                    use_multiple_axes = True
+                    logging.info(f"Using multiple Y-axes due to large range differences (ratio: {max_range/min_range:.1f})")
+
+            # Connect resize signal once (not in the loop)
+            # Disconnect any previous connections to avoid duplicates
+            try:
+                main_viewbox.sigResized.disconnect()
+            except:
+                pass  # No previous connection exists
+
+            # Connect the signal for updating additional viewboxes
+            if use_multiple_axes and len(y_columns) > 1:
+                main_viewbox.sigResized.connect(lambda: self._update_views())
+
             for i, (y_column, color) in enumerate(zip(y_columns, colors)):
                 logging.debug(f"Plotting column: {y_column}")
 
                 x_data = df[x_column].values
                 y_data = df[y_column].values
 
-                # Always use the main viewbox - this is now guaranteed to be a ViewBox
-                viewbox = main_viewbox
+                # Determine which viewbox to use
+                if i == 0 or not use_multiple_axes:
+                    # First plot or single axis mode - use main viewbox
+                    viewbox = main_viewbox
+                    if i == 0:
+                        self.plot_widget.setLabel('left', y_column, color=color.name())
+                else:
+                    # Create additional Y-axis for this data series
+                    axis_item = pg.AxisItem('right')
+                    axis_item.setLabel(y_column, color=color.name())
 
-                if i == 0:
-                    self.plot_widget.setLabel('left', y_column, color=color.name())
+                    # Create a new ViewBox for this axis
+                    viewbox = pg.ViewBox()
+
+                    # Link the X-axis to the main viewbox
+                    viewbox.setXLink(main_viewbox)
+
+                    # Add the axis and viewbox to the plot
+                    self.plot_widget.plotItem.layout.addItem(axis_item, 2, 3 + i - 1)
+                    self.plot_widget.scene().addItem(viewbox)
+                    axis_item.linkToView(viewbox)
+                    viewbox.setGeometry(main_viewbox.sceneBoundingRect())
+
+                    # Store the additional viewbox
+                    self.y_axes.append(viewbox)
+
+                    logging.info(f"Created additional Y-axis for {y_column}")
 
                 # Set opacity based on smoothing
                 if smoothing_params['apply']:
@@ -421,7 +467,7 @@ class PlotArea(QWidget):
                 original_color.setAlpha(original_alpha)
                 original_pen = mkPen(color=original_color, width=2)
 
-                # Plot original data - all use main viewbox now
+                # Create PlotDataItem without parent first
                 original_curve = pg.PlotDataItem(
                     x_data, y_data,
                     pen=original_pen,
@@ -431,7 +477,12 @@ class PlotArea(QWidget):
                     downsampleMethod='subsample'
                 )
 
-                # Add to viewbox
+                # Explicitly verify viewbox is correct type before adding
+                if not isinstance(viewbox, pg.ViewBox):
+                    logging.error(f"viewbox is {type(viewbox)}, not ViewBox! Using main_viewbox instead.")
+                    viewbox = main_viewbox
+
+                # Add to viewbox - this establishes the parent-child relationship
                 viewbox.addItem(original_curve)
 
                 self.original_lines.append(original_curve)
@@ -467,6 +518,11 @@ class PlotArea(QWidget):
                         downsampleMethod='subsample'
                     )
 
+                    # Verify viewbox is correct type
+                    if not isinstance(viewbox, pg.ViewBox):
+                        logging.error(f"viewbox is {type(viewbox)}, not ViewBox! Using main_viewbox instead.")
+                        viewbox = main_viewbox
+
                     # Add to viewbox
                     viewbox.addItem(smoothed_curve)
 
@@ -478,6 +534,27 @@ class PlotArea(QWidget):
                         'label': y_column,
                         'viewbox': viewbox
                     })
+
+                # Set Y-axis range for this specific viewbox
+                if len(y_data) > 0:
+                    y_min = float(np.min(y_data))
+                    y_max = float(np.max(y_data))
+
+                    # Calculate proper range with minimal padding
+                    y_range = y_max - y_min
+                    if y_range == 0:
+                        y_range = abs(y_max) if y_max != 0 else 1
+
+                    # Add 5% padding only to the top
+                    y_min_display = y_min - (y_range * 0.02)  # Small padding at bottom
+                    y_max_display = y_max + (y_range * 0.05)  # Slightly more padding at top
+
+                    # Set range for this viewbox
+                    viewbox.setLimits(yMin=y_min_display, yMax=y_max_display)
+                    viewbox.setYRange(y_min_display, y_max_display, padding=0)
+                    viewbox.enableAutoRange(enable=False)
+
+                    logging.info(f"Y-axis range for {y_column}: [{y_min_display:.2f}, {y_max_display:.2f}]")
 
             # Populate custom legend below plot (Excel-style)
             if self.show_legend:
@@ -523,27 +600,8 @@ class PlotArea(QWidget):
 
                 logging.info(f"X-axis range set: [{x_start:.2f}, {x_max:.2f}]")
 
-            # Set Y-axis range for the main viewbox based on all data
-            if len(all_y_ranges) > 0:
-                # Find the overall min and max across all y columns
-                overall_y_min = min(y_range[0] for y_range in all_y_ranges)
-                overall_y_max = max(y_range[1] for y_range in all_y_ranges)
-
-                # Start from actual data minimum
-                y_start = overall_y_min
-
-                # Add some padding to y_max for better visibility
-                y_range = overall_y_max - y_start
-                y_max_padded = overall_y_max + (y_range * 0.05)
-
-                # Set Y range with limits for main viewbox
-                main_viewbox.setLimits(yMin=y_start, yMax=y_max_padded)
-                main_viewbox.setYRange(y_start, y_max_padded, padding=0)
-
-                logging.info(f"Y-axis range set: [{y_start:.2f}, {y_max_padded:.2f}]")
-
-            # Disable auto-range after setting ranges to prevent automatic adjustments
-            main_viewbox.enableAutoRange(enable=False)
+            # Note: Y-axis ranges are now set individually for each viewbox during plotting
+            # This provides better scaling when multiple series have different ranges
 
             # Always show original data
             for line in self.original_lines:
@@ -1049,22 +1107,29 @@ class PlotArea(QWidget):
                 padding=0.02
             )
 
-            # Restore Y range based on all visible data
+            # Restore Y range for each viewbox based on its data
             if hasattr(self, 'last_plot_params'):
                 df = self.last_plot_params['df']
                 y_columns = self.last_plot_params['y_columns']
 
-                all_y_data = []
-                for y_column in y_columns:
-                    all_y_data.extend(df[y_column].values)
+                # Restore Y-axis range for each viewbox
+                for item in self.plot_items:
+                    y_column = item['label']
+                    viewbox = item['viewbox']
 
-                if len(all_y_data) > 0:
-                    y_min = float(np.min(all_y_data))
-                    y_max = float(np.max(all_y_data))
-                    y_start = y_min
-                    y_range = y_max - y_start
-                    y_max_padded = y_max + (y_range * 0.05)
-                    main_viewbox.setYRange(y_start, y_max_padded, padding=0)
+                    if y_column in y_columns:
+                        y_data = df[y_column].values
+                        if len(y_data) > 0:
+                            y_min = float(np.min(y_data))
+                            y_max = float(np.max(y_data))
+                            y_range = y_max - y_min
+                            if y_range == 0:
+                                y_range = abs(y_max) if y_max != 0 else 1
+
+                            y_min_display = y_min - (y_range * 0.02)
+                            y_max_display = y_max + (y_range * 0.05)
+
+                            viewbox.setYRange(y_min_display, y_max_display, padding=0)
 
             logging.info(f"Restored original range: {self.original_x_range}")
 
@@ -1250,6 +1315,28 @@ class PlotArea(QWidget):
             self.insert_text_action.setChecked(False)
 
         logging.info("Text insertion mode cancelled")
+
+    def _update_views(self):
+        """Update geometry of all additional Y-axis viewboxes to match main viewbox"""
+        try:
+            # Verify we have a valid main viewbox
+            main_viewbox = self.plot_widget.getPlotItem().getViewBox()
+            if not isinstance(main_viewbox, pg.ViewBox):
+                logging.warning(f"main_viewbox is {type(main_viewbox)}, not ViewBox. Skipping view update.")
+                return
+
+            # Update geometry for all additional viewboxes
+            for viewbox in self.y_axes:
+                if isinstance(viewbox, pg.ViewBox):
+                    try:
+                        # Block signals during geometry update to prevent cascading events
+                        viewbox.blockSignals(True)
+                        viewbox.setGeometry(main_viewbox.sceneBoundingRect())
+                        viewbox.blockSignals(False)
+                    except Exception as e:
+                        logging.warning(f"Error updating individual viewbox geometry: {e}")
+        except Exception as e:
+            logging.warning(f"Error updating viewbox geometries: {e}")
 
     def clear_all_axes(self):
         """Completely clear all plot items and axes - FIXED VERSION"""
