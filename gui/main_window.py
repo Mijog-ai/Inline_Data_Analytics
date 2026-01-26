@@ -1,3 +1,5 @@
+import traceback
+
 from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QFileDialog, QMessageBox, QAction, QDialog
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent
 
@@ -12,6 +14,7 @@ import pandas as pd
 import logging
 import os
 from gui.components.session_manager import SessionManager
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -76,7 +79,7 @@ class MainWindow(QMainWindow):
         # Reset RightPanel - clear plot first to prevent errors
         self.right_panel.plot_area.clear_plot()
         self.right_panel.statistics_area.clear_stats()
-        
+
         # Reset toolbar file name
         self.tool_bar.update_file_name(None)
         self.current_file = None
@@ -225,7 +228,8 @@ class MainWindow(QMainWindow):
             return
 
         default_name = os.path.splitext(os.path.basename(self.current_file))[0] if self.current_file else "data"
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Data",default_name, "CSV Files (*.csv);;Excel Files (*.xlsx)")
+        file_name, _ = QFileDialog.getSaveFileName(self, "Save Data", default_name,
+                                                   "CSV Files (*.csv);;Excel Files (*.xlsx)")
         if file_name:
             try:
                 if file_name.endswith('.csv'):
@@ -237,31 +241,35 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"An error occurred while saving the data: {str(e)}")
 
     def save_plot(self):
-        # Check if a plot exists by verifying plot_items or last_plot_params
+        """Save the complete plot"""
         if not hasattr(self.right_panel.plot_area, 'plot_items') or len(self.right_panel.plot_area.plot_items) == 0:
             QMessageBox.warning(self, "Warning", "No plot to save. Please create a plot first.")
             return
 
         default_name = os.path.splitext(os.path.basename(self.current_file))[0] if self.current_file else "plot"
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Plot", default_name, "PNG Files (*.png)")
+        file_name, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Plot",
+            default_name,
+            "PNG Files (*.png);;PDF Files (*.pdf);;All Files (*)"
+        )
+
         if file_name:
             try:
-                # Use PyQtGraph's ImageExporter to save the plot
-                import pyqtgraph.exporters
-
-                exporter = pyqtgraph.exporters.ImageExporter(self.right_panel.plot_area.main_plot)
-
-                # Ensure the file has .png extension
-                if not file_name.endswith('.png'):
+                # Ensure proper extension
+                if not (file_name.endswith('.png') or file_name.endswith('.pdf')):
                     file_name += '.png'
 
-                # Export the plot
-                exporter.export(file_name)
+                # Use the new export method
+                self.right_panel.plot_area.export_plot(file_name, include_legend=True)
 
-                QMessageBox.information(self, "Success", "Plot saved successfully!")
+                QMessageBox.information(self, "Success", f"Plot saved successfully to:\n{file_name}")
+                logging.info(f"Plot exported to: {file_name}")
+
             except Exception as e:
                 logging.error(f"Error saving plot: {str(e)}")
-                QMessageBox.critical(self, "Error", f"An error occurred while saving the plot: {str(e)}")
+                logging.error(traceback.format_exc())
+                QMessageBox.critical(self, "Error", f"An error occurred while saving the plot:\n{str(e)}")
 
     def export_table_to_excel(self):
         if self.df is None:
@@ -311,7 +319,6 @@ class MainWindow(QMainWindow):
 
     def apply_data_filter(self, column, min_val, max_val):
 
-
         try:
 
             logging.info(f"Applying data filter: column={column}, min={min_val}, max={max_val}")
@@ -344,7 +351,6 @@ class MainWindow(QMainWindow):
             logging.error(f"Unexpected error applying filter: {str(e)}")
             QMessageBox.critical(self, "Error", f"An unexpected error occurred: {str(e)}")
             self.filtered_df = self.original_df.copy()
-
 
     def update_plot(self, update_filter=True):
 
@@ -383,8 +389,6 @@ class MainWindow(QMainWindow):
         else:
             logging.warning("No data available to plot")
 
-
-
     def update_statistics(self):
         if self.filtered_df is not None and not self.filtered_df.empty:
             self.right_panel.statistics_area.update_stats(self.filtered_df)
@@ -395,5 +399,3 @@ class MainWindow(QMainWindow):
         if self.right_panel.plot_area.last_plot_params:
             self.right_panel.plot_area.last_plot_params['title'] = title
             self.update_plot()
-
-

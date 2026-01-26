@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QToolBar, QAction, QGroupBox,
     QComboBox, QFrame
 )
-from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtCore import Qt, QSize, QTimer
 from PyQt5.QtGui import QFont
 
 import pyqtgraph as pg
@@ -37,6 +37,9 @@ class PlotArea(QWidget):
 
     def _init_state_variables(self):
         """Initialize all state tracking variables"""
+
+        def _init_state_variables(self):
+            """Initialize all state tracking variables"""
         # Display modes
         self.show_cursor = False
         self.show_legend = True
@@ -44,6 +47,11 @@ class PlotArea(QWidget):
         self.zoom_mode_active = False
         self.text_insertion_mode = False
         self.text_removal_mode = False
+
+        # Click handling
+        self.click_timer = None
+        self.pending_click = None
+        self.double_click_interval = 300  # milliseconds
 
         # Plot data storage
         self.plot_items = []
@@ -192,7 +200,7 @@ class PlotArea(QWidget):
         # Highlight mode
         self.highlighter_action = self._create_action(
             "Highlight Mode",
-            "Enable highlight mode - right click to add highlights, double click to remove",
+            "Enable highlight mode - left click to add, double-click to remove highlights",  # Updated
             checkable=True,
             checked=False,
             callback=self._on_toggle_highlighter
@@ -252,8 +260,10 @@ class PlotArea(QWidget):
         self.main_plot.setMouseEnabled(x=False, y=False)
 
         # Connect mouse events
+        # Connect mouse events
         self.main_plot.scene().sigMouseMoved.connect(self._on_mouse_moved)
         self.main_plot.scene().sigMouseClicked.connect(self._on_mouse_click)
+
 
         # # Create crosshair (initially hidden)
         # self.crosshair_vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('k', style=QtCore.Qt.DashLine))
@@ -416,41 +426,139 @@ class PlotArea(QWidget):
         self.cursor_annotation.setText(cursor_text.strip())
         self.cursor_annotation.setVisible(True)
 
+    def _process_single_click(self):
+        """Process a confirmed single click after timer expires"""
+        if self.pending_click:
+            x, y = self.pending_click
+            print(f"Processing single click at x={x}, y={y}")
+            self._handle_left_click(x, y)
+            self.pending_click = None
+        self.click_timer = None
+
     def _on_mouse_click(self, event):
-        """Handle mouse click events"""
+        """Handle mouse click events with double-click detection"""
+        print(f"MOUSE CLICK: Button={event.button()}, Double={event.double()}")
+
         if event.button() == QtCore.Qt.LeftButton:
-            pos = event.scenePos()
-            if self.main_plot.sceneBoundingRect().contains(pos):
-                mouse_point = self.main_plot.vb.mapSceneToView(pos)
-                x, y = mouse_point.x(), mouse_point.y()
-                self._handle_left_click(x, y)
+            if event.double():
+                # Double click detected
+                print("LEFT DOUBLE CLICK")
+                if self.click_timer:
+                    self.click_timer.stop()
+                    self.click_timer = None
+                    self.pending_click = None
+
+                pos = event.scenePos()
+                if self.main_plot.sceneBoundingRect().contains(pos):
+                    mouse_point = self.main_plot.vb.mapSceneToView(pos)
+                    x, y = mouse_point.x(), mouse_point.y()
+                    self._handle_left_double_click(x, y)
+            else:
+                # Single click - delay to see if double-click follows
+                print("LEFT CLICK (pending)")
+                pos = event.scenePos()
+                if self.main_plot.sceneBoundingRect().contains(pos):
+                    mouse_point = self.main_plot.vb.mapSceneToView(pos)
+                    x, y = mouse_point.x(), mouse_point.y()
+
+                    # Cancel any existing timer
+                    if self.click_timer:
+                        self.click_timer.stop()
+
+                    # Store click and start timer
+                    self.pending_click = (x, y)
+                    self.click_timer = QTimer()
+                    self.click_timer.setSingleShot(True)
+                    self.click_timer.timeout.connect(self._process_single_click)
+                    self.click_timer.start(self.double_click_interval)
+
         elif event.button() == QtCore.Qt.RightButton:
+            print("RIGHT CLICK")
             pos = event.scenePos()
             if self.main_plot.sceneBoundingRect().contains(pos):
                 mouse_point = self.main_plot.vb.mapSceneToView(pos)
                 x, y = mouse_point.x(), mouse_point.y()
                 self._handle_right_click(x, y)
 
+
+
+
     def _handle_left_click(self, x, y):
         """Handle left mouse click based on active mode"""
         if self.text_insertion_mode:
             self._insert_floating_text_at(x, y)
+        elif self.yaxis_approx_value_highlighter:
+            print("Adding highlight via left click...")
+            self._add_highlight(x)
+
+    def _handle_left_double_click(self, x, y):
+        """Handle left double-click to remove nearest highlight"""
+        if self.yaxis_approx_value_highlighter:
+            print(f"Attempting to remove highlight near x={x}")
+            self._remove_nearest_highlight(x)
 
     def _on_toggle_highlighter(self, state):
         """Toggle highlight mode"""
         self.yaxis_approx_value_highlighter = bool(state)
+        print(f"HIGHLIGHTER TOGGLED: {self.yaxis_approx_value_highlighter}")
 
         if state:
             self._deactivate_other_modes(exclude='highlighter')
 
         logging.info(f"Highlight mode: {state}")
 
+    def _remove_nearest_highlight(self, x):
+        """Remove the highlight closest to the given x position"""
+        if not self.vertical_lines:
+            QMessageBox.information(
+                self, "No Highlights",
+                "There are no highlights to remove."
+            )
+            return
+
+        # Find nearest highlight
+        min_distance = float('inf')
+        nearest_idx = None
+
+        for idx, (highlight_x, _) in enumerate(self.vertical_lines):
+            distance = abs(highlight_x - x)
+            if distance < min_distance:
+                min_distance = distance
+                nearest_idx = idx
+
+        if nearest_idx is not None:
+            # Get the highlight items
+            highlight_x, highlight_items = self.vertical_lines[nearest_idx]
+
+            # Remove all items
+            for item in highlight_items:
+                try:
+                    # Remove from main plot
+                    if item in self.main_plot.items:
+                        self.main_plot.removeItem(item)
+                    else:
+                        # Try to find which viewbox contains it
+                        for plot_item in self.plot_items:
+                            if hasattr(plot_item['viewbox'], 'addedItems') and item in plot_item['viewbox'].addedItems:
+                                plot_item['viewbox'].removeItem(item)
+                                break
+                except Exception as e:
+                    logging.warning(f"Could not remove highlight item: {str(e)}")
+
+            # Remove from list
+            self.vertical_lines.pop(nearest_idx)
+            logging.info(f"Removed highlight at x={highlight_x:.2f}")
+            print(f"Removed highlight at x={highlight_x:.2f}")
+
     def _handle_right_click(self, x, y):
         """Handle right mouse click based on active mode"""
+        print(f"RIGHT CLICK DETECTED at x={x}, y={y}")
+        print(f"Text insertion mode: {self.text_insertion_mode}")
+        print(f"Highlighter mode: {self.yaxis_approx_value_highlighter}")
+
         if self.text_insertion_mode:
             self._cancel_text_insertion()
-        elif self.yaxis_approx_value_highlighter:
-            self._add_highlight(x)
+
     # ========================================================================
     # MULTI-AXIS PLOTTING FUNCTIONALITY
     # ========================================================================
@@ -757,20 +865,18 @@ class PlotArea(QWidget):
     # ========================================================================
 
     def _add_highlight(self, x):
-        """Add vertical line and highlight points at x position"""
+        """Add vertical line and create a legend box showing all axis values at x position"""
+        global nearest_y, nearest_x
         try:
-            # Check if there are any plot items
             if not self.plot_items or len(self.plot_items) == 0:
-                QMessageBox.warning(
-                    self, "No Data",
-                    "No plot data available. Please plot data first before adding highlights."
-                )
-                logging.warning("Attempted to add highlight with no plot data")
+                QMessageBox.warning(self, "No Data", "No plot data available.")
                 return
 
             xlabel = self.x_column if self.x_column else 'X'
             all_highlight_items = []
-            highlights_added = False
+
+            # Build legend text with all values
+            legend_text = f"{xlabel}: {x:.2f}\n" + "-" * 30 + "\n"
 
             for item in self.plot_items:
                 x_data = item['x_data']
@@ -784,26 +890,10 @@ class PlotArea(QWidget):
                 nearest_x = x_data[idx]
                 nearest_y = y_data[idx]
 
+                # Add to legend text
+                legend_text += f"{item['name']}: {nearest_y:.2f}\n"
+
                 viewbox = item['viewbox']
-                color = item['color']
-
-                # Create vertical dashed line - add to main plot (shared across all)
-                vline = pg.InfiniteLine(
-                    pos=nearest_x,
-                    angle=90,
-                    pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2)
-                )
-                self.main_plot.addItem(vline)  # Add to main plot, not viewbox
-                all_highlight_items.append(vline)
-
-                # Create horizontal dashed line - add to specific viewbox
-                hline = pg.InfiniteLine(
-                    pos=nearest_y,
-                    angle=0,
-                    pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2)
-                )
-                viewbox.addItem(hline)
-                all_highlight_items.append(hline)
 
                 # Create highlight point at intersection
                 highlight_scatter = pg.ScatterPlotItem(
@@ -816,31 +906,66 @@ class PlotArea(QWidget):
                 viewbox.addItem(highlight_scatter)
                 all_highlight_items.append(highlight_scatter)
 
-                # Create text annotation with X and Y values
-                text = pg.TextItem(
-                    f"{xlabel}: {nearest_x:.2f}\n{item['name']}: {nearest_y:.2f}",
-                    anchor=(0, 1),
-                    color='k',
-                    border=pg.mkPen('k', width=1),
-                    fill=pg.mkBrush(255, 255, 255, 200)
+                # Get the x-axis range for this viewbox to find the left edge
+                view_range = viewbox.viewRange()
+                x_left = view_range[0][0]  # Left edge of x-axis
+
+                # Add horizontal line from left edge to the data point
+                hline = pg.PlotCurveItem(
+                    x=[x_left, nearest_x],
+                    y=[nearest_y, nearest_y],
+                    pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=1)
                 )
-                text.setPos(nearest_x, nearest_y)
-                viewbox.addItem(text)
-                all_highlight_items.append(text)
+                viewbox.addItem(hline)
+                all_highlight_items.append(hline)
 
-                highlights_added = True
+            # Create single vertical line on main plot that extends full height
+            vline = pg.InfiniteLine(
+                pos=nearest_x,
+                angle=90,  # vertical line
+                pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2)
+            )
 
-            if not highlights_added:
-                QMessageBox.warning(
-                    self, "No Data",
-                    "No valid data points found to highlight."
-                )
-                logging.warning("No valid data points found for highlighting")
-                return
+            self.main_plot.addItem(vline)
+            all_highlight_items.append(vline)
 
-            # Store all highlight items for potential removal later
-            self.vertical_lines.append((x, all_highlight_items))
-            logging.info(f"Added highlight at x={x:.2f} for {len(self.plot_items)} columns")
+            # Create legend box with all values
+            legend_box = pg.TextItem(
+                legend_text.strip(),
+                anchor=(0, 0),
+                color='k',
+                border=pg.mkPen('k', width=2),
+                fill=pg.mkBrush(255, 255, 255, 230)
+            )
+
+            # Make the legend box draggable
+            legend_box.setFlag(legend_box.GraphicsItemFlag.ItemIsMovable)
+            legend_box.setFlag(legend_box.GraphicsItemFlag.ItemSendsGeometryChanges)
+
+            # Position legend box near the clicked point
+            view_range = self.main_plot.viewRange()
+            x_range = view_range[0][1] - view_range[0][0]
+            y_range = view_range[1][1] - view_range[1][0]
+
+            # Position slightly to the right and above the clicked point
+            x_offset = x_range * 0.02  # 2% of range to the right
+            y_offset = y_range * 0.05  # 5% of range above
+
+            # Make sure it stays within bounds
+            x_pos = min(nearest_x + x_offset, view_range[0][1] - x_range * 0.15)
+            y_pos = min(view_range[1][1] - y_range * 0.02, view_range[1][1])
+
+            # If too far right, move to left of the line instead
+            if x_pos + x_range * 0.12 > view_range[0][1]:
+                x_pos = nearest_x - x_offset - x_range * 0.10
+
+            legend_box.setPos(x_pos, y_pos)
+            self.main_plot.addItem(legend_box)
+            all_highlight_items.append(legend_box)
+
+            # Store all highlight items
+            self.vertical_lines.append((nearest_x, all_highlight_items))
+            logging.info(f"Added highlight at x={nearest_x:.2f}")
 
         except Exception as e:
             logging.error(f"Error adding highlight: {str(e)}")
@@ -861,23 +986,7 @@ class PlotArea(QWidget):
 
         return idx
 
-    # Optional: Add method to clear all highlights
-    def clear_all_highlights(self):
-        """Clear all highlight lines and annotations"""
-        for _, highlight_items in self.vertical_lines:
-            for item in highlight_items:
-                try:
-                    # Try to remove from scene
-                    if hasattr(item, 'scene') and item.scene() is not None:
-                        item.scene().removeItem(item)
-                    # Also try to remove from parent item
-                    elif hasattr(item, 'parentItem') and item.parentItem() is not None:
-                        item.parentItem().removeItem(item)
-                except Exception as e:
-                    logging.warning(f"Could not remove highlight item: {str(e)}")
 
-        self.vertical_lines = []
-        logging.info("Cleared all highlights")
 
     # ========================================================================
     # TEXT INSERTION/REMOVAL FUNCTIONALITY
@@ -924,19 +1033,19 @@ class PlotArea(QWidget):
     # UTILITY METHODS
     # ========================================================================
 
-    def _find_nearest_index(self, x_data, x_value):
-        """Find nearest index using binary search"""
-        if len(x_data) == 0:
-            return 0
-
-        idx = np.searchsorted(x_data, x_value)
-        idx = np.clip(idx, 0, len(x_data) - 1)
-
-        if idx > 0:
-            if abs(x_data[idx - 1] - x_value) < abs(x_data[idx] - x_value):
-                idx = idx - 1
-
-        return idx
+    # def _find_nearest_index(self, x_data, x_value):
+    #     """Find nearest index using binary search"""
+    #     if len(x_data) == 0:
+    #         return 0
+    #
+    #     idx = np.searchsorted(x_data, x_value)
+    #     idx = np.clip(idx, 0, len(x_data) - 1)
+    #
+    #     if idx > 0:
+    #         if abs(x_data[idx - 1] - x_value) < abs(x_data[idx] - x_value):
+    #             idx = idx - 1
+    #
+    #     return idx
 
     def _get_comment_box(self):
         """Get reference to comment box from main window"""
@@ -1084,6 +1193,114 @@ class PlotArea(QWidget):
         """Set show original state - deprecated"""
         pass
 
+    def export_plot(self, file_name, include_legend=True):
+        """
+        Export the complete plot with all axes, annotations, and legend
+        """
+        from PyQt5.QtWidgets import QApplication
+        from PyQt5.QtGui import QPixmap, QPainter
+        from PyQt5.QtCore import Qt
+
+        try:
+            # Temporarily hide cursor if active
+            cursor_was_visible = False
+            if self.show_cursor and self.cursor_annotation:
+                cursor_was_visible = True
+                self.cursor_annotation.setVisible(False)
+                if self.crosshair_vline:
+                    self.crosshair_vline.setVisible(False)
+                if self.crosshair_hline:
+                    self.crosshair_hline.setVisible(False)
+
+            # Force update and render
+            QApplication.processEvents()
+
+            # Get dimensions
+            widget_width = self.graphics_view.width()
+            widget_height = self.graphics_view.height()
+            legend_height = self.legend_widget.height() if (include_legend and self.legend_widget.isVisible()) else 0
+
+            # Create high-resolution pixmap
+            scale_factor = 2
+
+            # Render graphics view to pixmap
+            plot_pixmap = QPixmap(int(widget_width * scale_factor), int(widget_height * scale_factor))
+            plot_pixmap.fill(Qt.white)
+
+            # Create painter for plot pixmap
+            plot_painter = QPainter(plot_pixmap)
+            plot_painter.scale(scale_factor, scale_factor)
+            self.graphics_view.render(plot_painter)
+            plot_painter.end()
+
+            # Create final image with legend
+            total_height = widget_height + legend_height
+            final_pixmap = QPixmap(int(widget_width * scale_factor), int(total_height * scale_factor))
+            final_pixmap.fill(Qt.white)
+
+            # Paint everything together
+            painter = QPainter(final_pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.SmoothPixmapTransform)
+
+            # Draw plot
+            painter.drawPixmap(0, 0, plot_pixmap)
+
+            # Draw legend if visible
+            if include_legend and self.legend_widget.isVisible():
+                legend_pixmap = QPixmap(int(widget_width * scale_factor), int(legend_height * scale_factor))
+                legend_pixmap.fill(Qt.white)
+
+                legend_painter = QPainter(legend_pixmap)
+                legend_painter.scale(scale_factor, scale_factor)
+                self.legend_widget.render(legend_painter)
+                legend_painter.end()
+
+                painter.drawPixmap(0, int(widget_height * scale_factor), legend_pixmap)
+
+            painter.end()
+
+            # Save image
+            if file_name.endswith('.pdf'):
+                from PyQt5.QtPrintSupport import QPrinter
+
+                printer = QPrinter(QPrinter.HighResolution)
+                printer.setOutputFormat(QPrinter.PdfFormat)
+                printer.setOutputFileName(file_name)
+                printer.setPageSize(QPrinter.A4)
+                printer.setOrientation(QPrinter.Landscape)
+
+                pdf_painter = QPainter()
+                pdf_painter.begin(printer)
+
+                # Scale to fit
+                page_rect = printer.pageRect()
+                x_scale = page_rect.width() / float(final_pixmap.width())
+                y_scale = page_rect.height() / float(final_pixmap.height())
+                scale = min(x_scale, y_scale)
+
+                pdf_painter.scale(scale, scale)
+                pdf_painter.drawPixmap(0, 0, final_pixmap)
+                pdf_painter.end()
+            else:
+                # Save as PNG
+                final_pixmap.save(file_name, quality=100)
+
+            # Restore cursor visibility
+            if cursor_was_visible:
+                self.cursor_annotation.setVisible(True)
+                if self.crosshair_vline:
+                    self.crosshair_vline.setVisible(True)
+                if self.crosshair_hline:
+                    self.crosshair_hline.setVisible(True)
+
+            logging.info(f"Plot successfully exported to: {file_name}")
+            return True
+
+        except Exception as e:
+            logging.error(f"Error in export_plot: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
     def enable_insertion(self, text):
         """Enable text insertion mode with given text"""
         self.text_insertion_mode = True
