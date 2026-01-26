@@ -226,22 +226,23 @@ class MainWindow(QMainWindow):
             return
 
         default_name = os.path.splitext(os.path.basename(self.current_file))[0] if self.current_file else "plot"
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Plot", default_name, "PNG Files (*.png)")
+        file_name, _ = QFileDialog.getSaveFileName(
+            self, "Save Plot", default_name,
+            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;JPEG Files (*.jpg *.jpeg)"
+        )
         if file_name:
             try:
-                # Use PyQtGraph's ImageExporter to save the plot
-                import pyqtgraph.exporters
-
-                exporter = pyqtgraph.exporters.ImageExporter(self.right_panel.plot_area.plot_widget.plotItem)
-
-                # Ensure the file has .png extension
-                if not file_name.endswith('.png'):
-                    file_name += '.png'
-
-                # Export the plot
-                exporter.export(file_name)
+                # Use matplotlib's savefig to save the plot
+                self.right_panel.plot_area.figure.savefig(
+                    file_name,
+                    dpi=300,
+                    bbox_inches='tight',
+                    facecolor='white',
+                    edgecolor='none'
+                )
 
                 QMessageBox.information(self, "Success", "Plot saved successfully!")
+                logging.info(f"Plot saved to: {file_name}")
             except Exception as e:
                 logging.error(f"Error saving plot: {str(e)}")
                 QMessageBox.critical(self, "Error", f"An error occurred while saving the plot: {str(e)}")
