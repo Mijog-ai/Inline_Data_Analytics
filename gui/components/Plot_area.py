@@ -1,5 +1,5 @@
 """
-Plot Area Component - Recreated for better structure and maintainability
+Plot Area Component - Converted to matplotlib for better compatibility
 Handles all plotting functionality with toolbar controls for interactive features
 """
 
@@ -12,17 +12,23 @@ from PyQt5.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QToolBar, QAction, QGroupBox
 )
 from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtGui import QFont
 
-import pyqtgraph as pg
-from pyqtgraph import PlotWidget, InfiniteLine, TextItem, mkPen, mkBrush
+import matplotlib
+matplotlib.use('Qt5Agg')
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
+from matplotlib.text import Text
+import matplotlib.pyplot as plt
 
 from utils.asc_utils import apply_smoothing
 
 
 class PlotArea(QWidget):
     """
-    Main plotting area with interactive features and toolbar controls
+    Main plotting area with interactive features and toolbar controls using matplotlib
     """
 
     def __init__(self, parent):
@@ -58,6 +64,11 @@ class PlotArea(QWidget):
         self.zoom_region_lines = []
         self.floating_text_items = []
 
+        # Crosshair elements
+        self.crosshair_vline = None
+        self.crosshair_hline = None
+        self.cursor_annotation = None
+
         # Plot state
         self.current_title = ""
         self.original_x_range = None
@@ -77,7 +88,7 @@ class PlotArea(QWidget):
 
         # Main plot widget
         self._create_plot_widget()
-        self.layout.addWidget(self.plot_widget)
+        self.layout.addWidget(self.canvas)
 
         # Custom legend area (Excel-style)
         self._create_legend_area()
@@ -193,50 +204,31 @@ class PlotArea(QWidget):
 
     def _create_plot_widget(self):
         """Create and configure the main plot widget"""
-        self.plot_widget = PlotWidget()
-        self.plot_widget.setBackground('w')
-        self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
+        # Create matplotlib figure and canvas
+        self.figure = Figure(figsize=(12, 8), dpi=100, facecolor='white')
+        self.canvas = FigureCanvas(self.figure)
+        self.canvas.setMinimumHeight(400)
 
-        # Enable performance optimizations
-        pg.setConfigOptions(
-            antialias=True,
-            useOpenGL=True,
-            enableExperimental=True
-        )
+        # Create main axes
+        self.ax = self.figure.add_subplot(111)
+        self.ax.grid(True, alpha=0.3)
+        self.ax.set_facecolor('white')
 
-        # Disable default mouse interactions
-        self.plot_widget.setMouseEnabled(x=False, y=False)
-        self.plot_widget.wheelEvent = lambda event: None
-
-        # Setup crosshair cursor
-        self.crosshair_v = InfiniteLine(
-            angle=90, movable=False,
-            pen=mkPen('k', width=1, style=Qt.DashLine)
-        )
-        self.crosshair_h = InfiniteLine(
-            angle=0, movable=False,
-            pen=mkPen('k', width=1, style=Qt.DashLine)
-        )
-        self.plot_widget.addItem(self.crosshair_v, ignoreBounds=True)
-        self.plot_widget.addItem(self.crosshair_h, ignoreBounds=True)
-
-        # Cursor label
-        self.cursor_label = TextItem(
-            anchor=(0, 1),
-            color='k',
-            fill=mkBrush(255, 255, 255, 200)
-        )
-        self.plot_widget.addItem(self.cursor_label, ignoreBounds=True)
+        # Tight layout for better spacing
+        self.figure.tight_layout()
 
         # Connect mouse events
-        self.plot_widget.scene().sigMouseClicked.connect(self._on_mouse_click)
-        self.plot_widget.scene().sigMouseClicked.connect(self._on_double_click)
+        self.canvas.mpl_connect('button_press_event', self._on_mouse_click)
+        self.canvas.mpl_connect('motion_notify_event', self._on_mouse_moved)
 
-        # Setup mouse move tracking with rate limiting
-        self.proxy = pg.SignalProxy(
-            self.plot_widget.scene().sigMouseMoved,
-            rateLimit=60,
-            slot=self._on_mouse_moved
+        # Initialize crosshair elements (hidden initially)
+        self.crosshair_vline = self.ax.axvline(x=0, color='k', linestyle='--', linewidth=1, visible=False)
+        self.crosshair_hline = self.ax.axhline(y=0, color='k', linestyle='--', linewidth=1, visible=False)
+        self.cursor_annotation = self.ax.annotate(
+            '', xy=(0, 0), xytext=(10, 10),
+            textcoords='offset points',
+            bbox=dict(boxstyle='round,pad=0.5', fc='white', alpha=0.8),
+            visible=False
         )
 
     def _create_legend_area(self):
@@ -257,9 +249,13 @@ class PlotArea(QWidget):
     def _on_toggle_cursor(self, state):
         """Toggle crosshair cursor visibility"""
         self.show_cursor = bool(state)
-        self.crosshair_v.setVisible(self.show_cursor)
-        self.crosshair_h.setVisible(self.show_cursor)
-        self.cursor_label.setVisible(self.show_cursor)
+        if self.crosshair_vline:
+            self.crosshair_vline.set_visible(self.show_cursor)
+        if self.crosshair_hline:
+            self.crosshair_hline.set_visible(self.show_cursor)
+        if self.cursor_annotation:
+            self.cursor_annotation.set_visible(self.show_cursor)
+        self.canvas.draw_idle()
         logging.info(f"Cursor visibility: {self.show_cursor}")
 
     def _on_toggle_legend(self, state):
@@ -274,7 +270,7 @@ class PlotArea(QWidget):
 
         if state:
             self._deactivate_other_modes(exclude='highlighter')
-            self.plot_widget.setCursor(Qt.ArrowCursor)
+            self.canvas.setCursor(Qt.ArrowCursor)
 
         logging.info(f"Highlight mode: {state}")
 
@@ -284,7 +280,7 @@ class PlotArea(QWidget):
 
         if state:
             self._deactivate_other_modes(exclude='zoom')
-            self.plot_widget.setCursor(Qt.ArrowCursor)
+            self.canvas.setCursor(Qt.ArrowCursor)
             logging.info("Zoom region mode activated")
         else:
             logging.info("Zoom region mode deactivated")
@@ -314,7 +310,7 @@ class PlotArea(QWidget):
 
             self.text_insertion_mode = True
             self.pending_text = text
-            self.plot_widget.setCursor(Qt.CrossCursor)
+            self.canvas.setCursor(Qt.CrossCursor)
             self._deactivate_other_modes(exclude='text_insert')
             logging.info("Text insertion mode enabled")
         else:
@@ -332,7 +328,7 @@ class PlotArea(QWidget):
                 return
 
             self.text_removal_mode = True
-            self.plot_widget.setCursor(Qt.PointingHandCursor)
+            self.canvas.setCursor(Qt.PointingHandCursor)
             self._deactivate_other_modes(exclude='text_remove')
 
             QMessageBox.information(
@@ -342,7 +338,7 @@ class PlotArea(QWidget):
             logging.info("Text removal mode enabled")
         else:
             self.text_removal_mode = False
-            self.plot_widget.setCursor(Qt.ArrowCursor)
+            self.canvas.setCursor(Qt.ArrowCursor)
             logging.info("Text removal mode disabled")
 
     def _on_clear_all_texts(self):
@@ -362,10 +358,9 @@ class PlotArea(QWidget):
         )
 
         if reply == QMessageBox.Yes:
-            self.plot_widget.blockSignals(True)
             for text_data in self.floating_text_items:
-                self.plot_widget.removeItem(text_data['item'])
-            self.plot_widget.blockSignals(False)
+                text_item = text_data['item']
+                text_item.remove()
 
             self.floating_text_items = []
 
@@ -373,6 +368,7 @@ class PlotArea(QWidget):
                 self.remove_text_action.setChecked(False)
             self.text_removal_mode = False
 
+            self.canvas.draw_idle()
             logging.info("Cleared all floating texts")
             QMessageBox.information(self, "Cleared", "All text boxes have been removed.")
 
@@ -380,7 +376,8 @@ class PlotArea(QWidget):
         """Set the plot title from input"""
         title = self.title_input.text()
         self.current_title = title
-        self.plot_widget.setTitle(title)
+        self.ax.set_title(title)
+        self.canvas.draw_idle()
         if hasattr(self, 'last_plot_params'):
             self.last_plot_params['title'] = title
         logging.info(f"Title set to: {title}")
@@ -415,28 +412,25 @@ class PlotArea(QWidget):
     # MOUSE EVENT HANDLERS
     # ========================================================================
 
-    def _on_mouse_moved(self, evt):
+    def _on_mouse_moved(self, event):
         """Handle mouse movement for crosshair cursor"""
-        if not self.show_cursor:
+        if not self.show_cursor or event.inaxes != self.ax:
             return
 
-        pos = evt[0]
-        if not self.plot_widget.sceneBoundingRect().contains(pos):
+        x, y = event.xdata, event.ydata
+        if x is None or y is None:
             return
-
-        mouse_point = self.plot_widget.getPlotItem().getViewBox().mapSceneToView(pos)
-        x, y = mouse_point.x(), mouse_point.y()
 
         # Update crosshair position
-        self.crosshair_v.setPos(x)
-        self.crosshair_h.setPos(y)
+        self.crosshair_vline.set_xdata([x, x])
+        self.crosshair_hline.set_ydata([y, y])
 
         # Build cursor label text
         xlabel = self.last_plot_params.get('x_column', 'X') if self.last_plot_params else 'X'
         cursor_text = f"{xlabel}: {x:.2f}\n"
 
         for item in self.plot_items:
-            if item['curve'].isVisible():
+            if item['line'].get_visible():
                 x_data = item['x_data']
                 y_data = item['y_data']
 
@@ -445,22 +439,27 @@ class PlotArea(QWidget):
                     nearest_y = y_data[idx]
                     cursor_text += f"{item['label']}: {nearest_y:.2f}\n"
 
-        self.cursor_label.setPos(x, y)
-        self.cursor_label.setText(cursor_text.strip())
+        self.cursor_annotation.set_position((x, y))
+        self.cursor_annotation.set_text(cursor_text.strip())
+        self.cursor_annotation.set_visible(True)
+
+        self.canvas.draw_idle()
 
     def _on_mouse_click(self, event):
         """Handle mouse click events"""
-        pos = event.scenePos()
-        if not self.plot_widget.sceneBoundingRect().contains(pos):
+        if event.inaxes != self.ax:
             return
 
-        mouse_point = self.plot_widget.getPlotItem().getViewBox().mapSceneToView(pos)
-        x, y = mouse_point.x(), mouse_point.y()
+        x, y = event.xdata, event.ydata
+        if x is None or y is None:
+            return
 
-        if event.button() == Qt.LeftButton:
+        if event.button == 1:  # Left click
             self._handle_left_click(x, y)
-        elif event.button() == Qt.RightButton:
+        elif event.button == 3:  # Right click
             self._handle_right_click(x, y)
+        elif event.dblclick:  # Double click
+            self._handle_double_click(x, y)
 
     def _handle_left_click(self, x, y):
         """Handle left mouse click based on active mode"""
@@ -492,18 +491,8 @@ class PlotArea(QWidget):
         elif self.yaxis_approx_value_highlighter:
             self._add_highlight(x)
 
-    def _on_double_click(self, event):
+    def _handle_double_click(self, x, y):
         """Handle double-click to remove highlights"""
-        if not event.double():
-            return
-
-        pos = event.scenePos()
-        if not self.plot_widget.sceneBoundingRect().contains(pos):
-            return
-
-        mouse_point = self.plot_widget.getPlotItem().getViewBox().mapSceneToView(pos)
-        x = mouse_point.x()
-
         if self.yaxis_approx_value_highlighter:
             self._remove_nearest_highlight(x)
 
@@ -522,41 +511,24 @@ class PlotArea(QWidget):
 
             logging.info(f"Plotting data: x={x_column}, y={y_columns}, title={title}")
 
-            # Disable updates during batch operations
-            self.plot_widget.setUpdatesEnabled(False)
-
             # Clear previous plot
             self._clear_plot_data()
 
             # Set labels
-            self.plot_widget.setTitle(title)
-            self.plot_widget.setLabel('bottom', x_column)
+            self.ax.set_title(title)
+            self.ax.set_xlabel(x_column)
 
             # Generate colors for each series
             colors = self._generate_distinct_colors(len(y_columns))
 
-            # Get main viewbox
-            main_viewbox = self.plot_widget.getPlotItem().getViewBox()
-            if not isinstance(main_viewbox, pg.ViewBox):
-                logging.error(f"Invalid main viewbox type: {type(main_viewbox)}")
-                main_viewbox = self.plot_widget.plotItem.vb
-
             # Determine if multiple Y-axes needed
             use_multiple_axes = self._should_use_multiple_axes(df, y_columns)
-
-            # Setup resize handling for multiple axes
-            if use_multiple_axes and len(y_columns) > 1:
-                try:
-                    main_viewbox.sigResized.disconnect()
-                except:
-                    pass
-                main_viewbox.sigResized.connect(self._update_views)
 
             # Plot each data series
             for i, (y_column, color) in enumerate(zip(y_columns, colors)):
                 self._plot_single_series(
                     df, x_column, y_column, color, i,
-                    main_viewbox, use_multiple_axes, smoothing_params
+                    use_multiple_axes, smoothing_params
                 )
 
             # Populate legend
@@ -566,11 +538,9 @@ class PlotArea(QWidget):
             # Add limit lines
             self._add_limit_lines(limit_lines)
 
-            # Toggle cursor visibility
-            self._on_toggle_cursor(self.cursor_action.isChecked())
-
-            # Set X-axis range
-            self._set_x_axis_range(df[x_column].values, main_viewbox)
+            # Set axis ranges
+            x_data = df[x_column].values
+            self._set_x_axis_range(x_data)
 
             # Store plot parameters for later updates
             self.last_plot_params = {
@@ -582,22 +552,23 @@ class PlotArea(QWidget):
                 'title': title
             }
 
-            # Re-enable updates
-            self.plot_widget.setUpdatesEnabled(True)
-            self.plot_widget.update()
+            # Redraw canvas
+            self.canvas.draw()
 
             logging.info("Plot completed successfully")
 
         except Exception as e:
             logging.error(f"Error in plot_data: {str(e)}")
             logging.error(traceback.format_exc())
-            self.plot_widget.setUpdatesEnabled(True)
             QMessageBox.critical(self, "Error", f"An error occurred while plotting: {str(e)}")
 
     def _clear_plot_data(self):
         """Clear all plot data and axes"""
-        self._clear_all_axes()
-        self.plot_widget.clear()
+        self.ax.clear()
+
+        # Clear additional axes
+        for ax in self.y_axes:
+            self.figure.delaxes(ax)
 
         self.plot_items = []
         self.original_lines = []
@@ -606,10 +577,18 @@ class PlotArea(QWidget):
 
         self._clear_legend()
 
-        # Re-add crosshair elements
-        self.plot_widget.addItem(self.crosshair_v)
-        self.plot_widget.addItem(self.crosshair_h)
-        self.plot_widget.addItem(self.cursor_label)
+        # Re-enable grid
+        self.ax.grid(True, alpha=0.3)
+
+        # Re-create crosshair elements
+        self.crosshair_vline = self.ax.axvline(x=0, color='k', linestyle='--', linewidth=1, visible=False)
+        self.crosshair_hline = self.ax.axhline(y=0, color='k', linestyle='--', linewidth=1, visible=False)
+        self.cursor_annotation = self.ax.annotate(
+            '', xy=(0, 0), xytext=(10, 10),
+            textcoords='offset points',
+            bbox=dict(boxstyle='round,pad=0.5', fc='white', alpha=0.8),
+            visible=False
+        )
 
     def _should_use_multiple_axes(self, df, y_columns):
         """Determine if multiple Y-axes are needed based on data ranges"""
@@ -642,22 +621,34 @@ class PlotArea(QWidget):
         return False
 
     def _plot_single_series(self, df, x_column, y_column, color, index,
-                           main_viewbox, use_multiple_axes, smoothing_params):
+                           use_multiple_axes, smoothing_params):
         """Plot a single data series with optional smoothing"""
         x_data = df[x_column].values
         y_data = df[y_column].values
 
-        # Determine viewbox to use
+        # Determine which axes to use
         if index == 0 or not use_multiple_axes:
-            viewbox = main_viewbox
+            ax = self.ax
             if index == 0:
-                self.plot_widget.setLabel('left', y_column, color=color.name())
+                ax.set_ylabel(y_column, color=color)
+                ax.tick_params(axis='y', labelcolor=color)
         else:
-            viewbox = self._create_additional_y_axis(y_column, color, index, main_viewbox)
+            # Create additional Y-axis
+            ax = self._create_additional_y_axis(y_column, color, index)
 
         # Plot original data
-        original_alpha = 80 if smoothing_params['apply'] else 255
-        self._plot_curve(x_data, y_data, color, original_alpha, y_column, viewbox, "(Original)")
+        original_alpha = 0.3 if smoothing_params['apply'] else 1.0
+        line, = ax.plot(x_data, y_data, color=color, alpha=original_alpha,
+                       linewidth=2, label=f'{y_column} (Original)')
+
+        self.original_lines.append(line)
+        self.plot_items.append({
+            'line': line,
+            'x_data': x_data,
+            'y_data': y_data,
+            'label': y_column,
+            'ax': ax
+        })
 
         # Plot smoothed data if requested
         if smoothing_params['apply']:
@@ -668,65 +659,39 @@ class PlotArea(QWidget):
                 poly_order=smoothing_params['poly_order'],
                 sigma=smoothing_params['sigma']
             )
-            self._plot_curve(x_data, y_smoothed, color, 255, y_column, viewbox, "(Smoothed)")
+            smoothed_line, = ax.plot(x_data, y_smoothed, color=color, alpha=1.0,
+                                    linewidth=2, label=f'{y_column} (Smoothed)')
 
-        # Set Y-axis range for this viewbox
-        self._set_y_axis_range(y_data, viewbox, y_column)
+            self.smoothed_lines.append(smoothed_line)
+            self.plot_items.append({
+                'line': smoothed_line,
+                'x_data': x_data,
+                'y_data': y_smoothed,
+                'label': y_column,
+                'ax': ax
+            })
 
-    def _create_additional_y_axis(self, y_column, color, index, main_viewbox):
+        # Set Y-axis range for this axes
+        self._set_y_axis_range(y_data, ax)
+
+    def _create_additional_y_axis(self, y_column, color, index):
         """Create an additional Y-axis for a data series"""
-        axis_item = pg.AxisItem('right')
-        axis_item.setLabel(y_column, color=color.name())
+        ax = self.ax.twinx()
 
-        viewbox = pg.ViewBox()
-        viewbox.setXLink(main_viewbox)
+        # Offset the spine if this is the 3rd+ axis
+        if index > 1:
+            ax.spines['right'].set_position(('outward', 60 * (index - 1)))
 
-        self.plot_widget.plotItem.layout.addItem(axis_item, 2, 3 + index - 1)
-        self.plot_widget.scene().addItem(viewbox)
-        axis_item.linkToView(viewbox)
-        viewbox.setGeometry(main_viewbox.sceneBoundingRect())
+        ax.set_ylabel(y_column, color=color)
+        ax.tick_params(axis='y', labelcolor=color)
 
-        self.y_axes.append(viewbox)
+        self.y_axes.append(ax)
         logging.info(f"Created additional Y-axis for {y_column}")
 
-        return viewbox
+        return ax
 
-    def _plot_curve(self, x_data, y_data, color, alpha, label, viewbox, suffix=""):
-        """Create and add a plot curve to the specified viewbox"""
-        curve_color = QColor(color)
-        curve_color.setAlpha(alpha)
-        pen = mkPen(color=curve_color, width=2)
-
-        curve = pg.PlotDataItem(
-            x_data, y_data,
-            pen=pen,
-            name=f'{label} {suffix}',
-            clipToView=True,
-            autoDownsample=True,
-            downsampleMethod='subsample'
-        )
-
-        if not isinstance(viewbox, pg.ViewBox):
-            logging.error(f"Invalid viewbox type: {type(viewbox)}")
-            viewbox = self.plot_widget.getPlotItem().getViewBox()
-
-        viewbox.addItem(curve)
-
-        if suffix == "(Original)" or suffix == "":
-            self.original_lines.append(curve)
-        else:
-            self.smoothed_lines.append(curve)
-
-        self.plot_items.append({
-            'curve': curve,
-            'x_data': x_data,
-            'y_data': y_data,
-            'label': label,
-            'viewbox': viewbox
-        })
-
-    def _set_y_axis_range(self, y_data, viewbox, y_column):
-        """Set the Y-axis range for a viewbox based on data"""
+    def _set_y_axis_range(self, y_data, ax):
+        """Set the Y-axis range for axes based on data"""
         if len(y_data) == 0:
             return
 
@@ -741,13 +706,11 @@ class PlotArea(QWidget):
         y_min_display = y_min - (y_range * 0.02)
         y_max_display = y_max + (y_range * 0.05)
 
-        viewbox.setLimits(yMin=y_min_display, yMax=y_max_display)
-        viewbox.setYRange(y_min_display, y_max_display, padding=0)
-        viewbox.enableAutoRange(enable=False)
+        ax.set_ylim(y_min_display, y_max_display)
 
-        logging.info(f"Y-axis range for {y_column}: [{y_min_display:.2f}, {y_max_display:.2f}]")
+        logging.info(f"Y-axis range set: [{y_min_display:.2f}, {y_max_display:.2f}]")
 
-    def _set_x_axis_range(self, x_data, viewbox):
+    def _set_x_axis_range(self, x_data):
         """Set the X-axis range from data"""
         if len(x_data) == 0:
             return
@@ -757,8 +720,10 @@ class PlotArea(QWidget):
 
         self.original_x_range = (x_min, x_max)
 
-        viewbox.setLimits(xMin=x_min, xMax=x_max)
-        viewbox.setXRange(x_min, x_max, padding=0.02)
+        # Add 2% padding
+        x_range = x_max - x_min
+        padding = x_range * 0.02
+        self.ax.set_xlim(x_min - padding, x_max + padding)
 
         logging.info(f"X-axis range set: [{x_min:.2f}, {x_max:.2f}]")
 
@@ -766,21 +731,11 @@ class PlotArea(QWidget):
         """Add limit lines to the plot"""
         for line in limit_lines:
             if line['type'] == 'vertical':
-                vline = InfiniteLine(
-                    pos=line['value'],
-                    angle=90,
-                    pen=mkPen('k', width=2, style=Qt.DashLine),
-                    label=f"x={line['value']}"
-                )
-                self.plot_widget.addItem(vline)
+                self.ax.axvline(x=line['value'], color='k', linestyle='--',
+                               linewidth=2, label=f"x={line['value']}")
             else:
-                hline = InfiniteLine(
-                    pos=line['value'],
-                    angle=0,
-                    pen=mkPen('k', width=2, style=Qt.DashLine),
-                    label=f"y={line['value']}"
-                )
-                self.plot_widget.addItem(hline)
+                self.ax.axhline(y=line['value'], color='k', linestyle='--',
+                               linewidth=2, label=f"y={line['value']}")
 
     # ========================================================================
     # LEGEND MANAGEMENT
@@ -820,7 +775,12 @@ class PlotArea(QWidget):
         # Color indicator
         color_label = QLabel()
         color_label.setFixedSize(30, 3)
-        color_label.setStyleSheet(f"background-color: {color.name()}; border: none;")
+        # Convert matplotlib color to hex
+        if isinstance(color, str):
+            color_hex = color
+        else:
+            color_hex = matplotlib.colors.to_hex(color)
+        color_label.setStyleSheet(f"background-color: {color_hex}; border: none;")
         item_layout.addWidget(color_label)
 
         # Text label
@@ -838,13 +798,10 @@ class PlotArea(QWidget):
     def _add_highlight(self, x):
         """Add vertical line and highlight points at x position"""
         xlabel = self.last_plot_params.get('x_column', 'X') if self.last_plot_params else 'X'
-        points_group = []
-
-        main_viewbox = self.plot_widget.getPlotItem().getViewBox()
-        self.plot_widget.setUpdatesEnabled(False)
+        highlight_artists = []
 
         for item in self.plot_items:
-            if not item['curve'].isVisible():
+            if not item['line'].get_visible():
                 continue
 
             x_data = item['x_data']
@@ -858,60 +815,39 @@ class PlotArea(QWidget):
             nearest_x = x_data[idx]
             nearest_y = y_data[idx]
 
-            viewbox = item['viewbox']
+            ax = item['ax']
 
             # Vertical line from bottom to point
-            y_range = viewbox.viewRange()[1]
-            y_min = y_range[0]
-
-            vertical_line = pg.PlotDataItem(
-                [nearest_x, nearest_x],
-                [y_min, nearest_y],
-                pen=mkPen('gray', width=2, style=Qt.DashLine)
-            )
-            viewbox.addItem(vertical_line)
-            points_group.append((vertical_line, viewbox))
+            y_min, y_max = ax.get_ylim()
+            vline = ax.plot([nearest_x, nearest_x], [y_min, nearest_y],
+                          color='gray', linestyle='--', linewidth=2)[0]
+            highlight_artists.append(vline)
 
             # Horizontal line from left to point
-            x_range = main_viewbox.viewRange()[0]
-            x_min = x_range[0]
-
-            horizontal_line = pg.PlotDataItem(
-                [x_min, nearest_x],
-                [nearest_y, nearest_y],
-                pen=mkPen('gray', width=2, style=Qt.DashLine)
-            )
-            viewbox.addItem(horizontal_line)
-            points_group.append((horizontal_line, viewbox))
+            x_min, x_max = self.ax.get_xlim()
+            hline = ax.plot([x_min, nearest_x], [nearest_y, nearest_y],
+                          color='gray', linestyle='--', linewidth=2)[0]
+            highlight_artists.append(hline)
 
             # Highlight point
-            scatter = pg.ScatterPlotItem(
-                [nearest_x], [nearest_y],
-                pen=mkPen('r', width=2),
-                brush=mkBrush('r'),
-                size=10,
-                symbol='o'
-            )
-            viewbox.addItem(scatter)
-            points_group.append((scatter, viewbox))
+            scatter = ax.scatter([nearest_x], [nearest_y], c='red', s=100,
+                               zorder=5, edgecolors='red', linewidths=2)
+            highlight_artists.append(scatter)
 
             # Annotation
             annotation_text = f"{xlabel}: {nearest_x:.2f}\n{item['label']}: {nearest_y:.2f}"
-            annotation = TextItem(
+            annotation = ax.annotate(
                 annotation_text,
-                anchor=(0, 0.5),
-                color='k',
-                fill=mkBrush(255, 255, 255, 200),
-                border=mkPen('k', width=1)
+                xy=(nearest_x, nearest_y),
+                xytext=(10, 10),
+                textcoords='offset points',
+                bbox=dict(boxstyle='round,pad=0.5', fc='white', alpha=0.8, edgecolor='black'),
+                fontsize=9
             )
-            annotation.setPos(nearest_x, nearest_y)
-            viewbox.addItem(annotation)
-            points_group.append((annotation, viewbox))
+            highlight_artists.append(annotation)
 
-        self.vertical_lines.append((x, points_group))
-
-        self.plot_widget.setUpdatesEnabled(True)
-        self.plot_widget.update()
+        self.vertical_lines.append((x, highlight_artists))
+        self.canvas.draw_idle()
 
     def _remove_nearest_highlight(self, x):
         """Remove the nearest highlight"""
@@ -921,21 +857,13 @@ class PlotArea(QWidget):
         distances = np.array([abs(vline[0] - x) for vline in self.vertical_lines])
         nearest_index = np.argmin(distances)
 
-        _, points_group = self.vertical_lines[nearest_index]
+        _, highlight_artists = self.vertical_lines[nearest_index]
 
-        for item, viewbox in points_group:
-            try:
-                viewbox.blockSignals(True)
-                viewbox.removeItem(item)
-                viewbox.blockSignals(False)
-            except Exception as e:
-                logging.warning(f"Could not remove highlight item: {e}")
-                try:
-                    self.plot_widget.removeItem(item)
-                except:
-                    pass
+        for artist in highlight_artists:
+            artist.remove()
 
         self.vertical_lines.pop(nearest_index)
+        self.canvas.draw_idle()
         logging.info(f"Removed highlight at x={x:.2f}")
 
     # ========================================================================
@@ -951,21 +879,15 @@ class PlotArea(QWidget):
             )
             return
 
-        zoom_line = InfiniteLine(
-            pos=x,
-            angle=90,
-            pen=mkPen('b', width=3, style=Qt.DashLine),
-            movable=True
-        )
-        zoom_line.sigPositionChanged.connect(self._update_zoom_region)
-
-        self.plot_widget.addItem(zoom_line)
+        zoom_line = self.ax.axvline(x=x, color='b', linestyle='--', linewidth=3)
         self.zoom_region_lines.append((x, zoom_line))
 
         logging.info(f"Added zoom region line at x={x:.2f}")
 
         if len(self.zoom_region_lines) == 2:
             self._update_zoom_region()
+
+        self.canvas.draw_idle()
 
     def _remove_zoom_region_line(self, x):
         """Remove the nearest zoom region line"""
@@ -976,7 +898,7 @@ class PlotArea(QWidget):
         nearest_index = np.argmin(distances)
 
         _, zoom_line = self.zoom_region_lines[nearest_index]
-        self.plot_widget.removeItem(zoom_line)
+        zoom_line.remove()
         self.zoom_region_lines.pop(nearest_index)
 
         logging.info(f"Removed zoom region line at x={x:.2f}")
@@ -984,26 +906,34 @@ class PlotArea(QWidget):
         if len(self.zoom_region_lines) < 2:
             self._restore_original_range()
 
+        self.canvas.draw_idle()
+
     def _update_zoom_region(self):
         """Update plot zoom based on two region lines"""
         if len(self.zoom_region_lines) != 2:
             return
 
-        x1 = self.zoom_region_lines[0][1].value()
-        x2 = self.zoom_region_lines[1][1].value()
+        x1 = self.zoom_region_lines[0][0]
+        x2 = self.zoom_region_lines[1][0]
 
         x_min = min(x1, x2)
         x_max = max(x1, x2)
 
-        self.plot_widget.setXRange(x_min, x_max, padding=0.02)
+        # Add 2% padding
+        x_range = x_max - x_min
+        padding = x_range * 0.02
+        self.ax.set_xlim(x_min - padding, x_max + padding)
+
+        self.canvas.draw_idle()
         logging.info(f"Zoomed to region: {x_min:.2f} to {x_max:.2f}")
 
     def _clear_zoom_region(self):
         """Clear all zoom region lines"""
         for _, zoom_line in self.zoom_region_lines:
-            self.plot_widget.removeItem(zoom_line)
+            zoom_line.remove()
         self.zoom_region_lines = []
         self._restore_original_range()
+        self.canvas.draw_idle()
         logging.info("Cleared all zoom region lines")
 
     def _restore_original_range(self):
@@ -1011,12 +941,10 @@ class PlotArea(QWidget):
         if self.original_x_range is None:
             return
 
-        main_viewbox = self.plot_widget.getPlotItem().getViewBox()
-        main_viewbox.setXRange(
-            self.original_x_range[0],
-            self.original_x_range[1],
-            padding=0.02
-        )
+        x_min, x_max = self.original_x_range
+        x_range = x_max - x_min
+        padding = x_range * 0.02
+        self.ax.set_xlim(x_min - padding, x_max + padding)
 
         # Restore Y ranges
         if self.last_plot_params:
@@ -1025,22 +953,14 @@ class PlotArea(QWidget):
 
             for item in self.plot_items:
                 y_column = item['label']
-                viewbox = item['viewbox']
+                ax = item['ax']
 
                 if y_column in y_columns:
                     y_data = df[y_column].values
                     if len(y_data) > 0:
-                        y_min = float(np.min(y_data))
-                        y_max = float(np.max(y_data))
-                        y_range = y_max - y_min
-                        if y_range == 0:
-                            y_range = abs(y_max) if y_max != 0 else 1
+                        self._set_y_axis_range(y_data, ax)
 
-                        y_min_display = y_min - (y_range * 0.02)
-                        y_max_display = y_max + (y_range * 0.05)
-
-                        viewbox.setYRange(y_min_display, y_max_display, padding=0)
-
+        self.canvas.draw_idle()
         logging.info(f"Restored original range: {self.original_x_range}")
 
     # ========================================================================
@@ -1050,21 +970,12 @@ class PlotArea(QWidget):
     def _insert_floating_text_at(self, x, y):
         """Insert floating text box at position"""
         try:
-            text_item = pg.TextItem(
-                self.pending_text,
-                anchor=(0.5, 0.5),
-                color='k',
-                fill=mkBrush(255, 255, 200, 220),
-                border=mkPen('k', width=2)
+            text_item = self.ax.text(
+                x, y, self.pending_text,
+                fontsize=10, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.9, edgecolor='black', linewidth=2),
+                ha='center', va='center'
             )
-
-            font = QFont()
-            font.setPointSize(10)
-            font.setBold(True)
-            text_item.setFont(font)
-
-            text_item.setPos(x, y)
-            self.plot_widget.addItem(text_item)
 
             self.floating_text_items.append({
                 'item': text_item,
@@ -1077,8 +988,10 @@ class PlotArea(QWidget):
             # Exit insertion mode
             self.text_insertion_mode = False
             self.pending_text = ""
-            self.plot_widget.setCursor(Qt.ArrowCursor)
+            self.canvas.setCursor(Qt.ArrowCursor)
             self.insert_text_action.setChecked(False)
+
+            self.canvas.draw_idle()
 
         except Exception as e:
             logging.error(f"Error inserting floating text: {str(e)}")
@@ -1089,7 +1002,9 @@ class PlotArea(QWidget):
         if not self.floating_text_items:
             return False
 
-        threshold = 50
+        # Convert to display coordinates for better distance calculation
+        threshold = 0.1  # Relative threshold based on data coordinates
+
         closest_text = None
         min_distance = float('inf')
 
@@ -1101,9 +1016,10 @@ class PlotArea(QWidget):
                 min_distance = distance
                 closest_text = text_data
 
-        if closest_text and min_distance < threshold:
-            self.plot_widget.removeItem(closest_text['item'])
+        if closest_text:
+            closest_text['item'].remove()
             self.floating_text_items.remove(closest_text)
+            self.canvas.draw_idle()
             logging.info(f"Removed floating text at ({closest_text['position'][0]:.2f}, {closest_text['position'][1]:.2f})")
             return True
 
@@ -1113,7 +1029,7 @@ class PlotArea(QWidget):
         """Cancel text insertion mode"""
         self.text_insertion_mode = False
         self.pending_text = ""
-        self.plot_widget.setCursor(Qt.ArrowCursor)
+        self.canvas.setCursor(Qt.ArrowCursor)
         self.insert_text_action.setChecked(False)
         logging.info("Text insertion mode cancelled")
 
@@ -1131,7 +1047,7 @@ class PlotArea(QWidget):
                     x_fit = np.linspace(np.min(x_data), np.max(x_data), len(x_data))
                     y_fit = fit_func(x_fit)
 
-                    item['curve'].setData(x_fit, y_fit)
+                    item['line'].set_data(x_fit, y_fit)
                     item['is_fitted'] = True
                     item['fit_type'] = fit_type
                     item['fit_equation'] = equation
@@ -1139,8 +1055,9 @@ class PlotArea(QWidget):
                     logging.info(f"Updated line with {fit_type} fit")
                     break
 
-            current_title = self.plot_widget.plotItem.titleLabel.text
-            self.plot_widget.setTitle(f'{current_title} - {fit_type} Fit Applied')
+            current_title = self.ax.get_title()
+            self.ax.set_title(f'{current_title} - {fit_type} Fit Applied')
+            self.canvas.draw_idle()
 
             logging.info("Curve fitting applied successfully")
 
@@ -1161,9 +1078,10 @@ class PlotArea(QWidget):
                         y_column = item['label']
                         y_data = main_window.filtered_df[y_column].values
 
-                        item['curve'].setData(x_data, y_data)
+                        item['line'].set_data(x_data, y_data)
                         item['is_fitted'] = False
 
+            self.canvas.draw_idle()
             logging.info("Curve fitting removed successfully")
 
         except Exception as e:
@@ -1174,16 +1092,18 @@ class PlotArea(QWidget):
     # ========================================================================
 
     def _generate_distinct_colors(self, n):
-        """Generate N visually distinct colors using HSV"""
+        """Generate N visually distinct colors"""
         if n == 0:
             return []
 
-        colors = []
-        for i in range(n):
-            hue = int(255 * i / n)
-            color = QColor.fromHsv(hue, 255, 200)
-            colors.append(color)
-        return colors
+        # Use matplotlib's color cycle or generate colors
+        colors = plt.cm.tab10(np.linspace(0, 1, min(n, 10)))
+        if n > 10:
+            colors = plt.cm.tab20(np.linspace(0, 1, min(n, 20)))
+        if n > 20:
+            colors = plt.cm.hsv(np.linspace(0, 1, n))
+
+        return colors[:n]
 
     def _find_nearest_index(self, x_data, x_value):
         """Find nearest index using binary search"""
@@ -1215,100 +1135,6 @@ class PlotArea(QWidget):
                     return child
         return None
 
-    def _update_views(self):
-        """Update geometry of all additional Y-axis viewboxes"""
-        try:
-            main_viewbox = self.plot_widget.getPlotItem().getViewBox()
-            if not isinstance(main_viewbox, pg.ViewBox):
-                logging.warning(f"Invalid main_viewbox type: {type(main_viewbox)}")
-                return
-
-            for viewbox in self.y_axes:
-                if isinstance(viewbox, pg.ViewBox):
-                    try:
-                        viewbox.blockSignals(True)
-                        viewbox.setGeometry(main_viewbox.sceneBoundingRect())
-                        viewbox.blockSignals(False)
-                    except Exception as e:
-                        logging.warning(f"Error updating viewbox geometry: {e}")
-        except Exception as e:
-            logging.warning(f"Error updating views: {e}")
-
-    def _clear_all_axes(self):
-        """Clear all plot items and axes"""
-        logging.info("Clearing all axes and plot items")
-
-        try:
-            main_viewbox = self.plot_widget.getPlotItem().getViewBox()
-        except:
-            main_viewbox = None
-
-        # Remove plot data items
-        for item_data in self.plot_items:
-            try:
-                curve = item_data.get('curve')
-                viewbox = item_data.get('viewbox')
-
-                if curve and viewbox and isinstance(viewbox, pg.ViewBox):
-                    try:
-                        viewbox.removeItem(curve)
-                    except:
-                        if main_viewbox:
-                            try:
-                                main_viewbox.removeItem(curve)
-                            except:
-                                pass
-            except Exception as e:
-                logging.warning(f"Error removing curve: {e}")
-
-        # Remove additional viewboxes
-        for viewbox in self.y_axes:
-            try:
-                if not isinstance(viewbox, pg.ViewBox):
-                    continue
-
-                for item in list(viewbox.allChildren()):
-                    try:
-                        viewbox.removeItem(item)
-                    except:
-                        pass
-
-                if viewbox.scene() is not None:
-                    self.plot_widget.scene().removeItem(viewbox)
-            except Exception as e:
-                logging.warning(f"Error removing viewbox: {e}")
-
-        # Remove axis items from layout
-        try:
-            layout = self.plot_widget.plotItem.layout
-            items_to_remove = []
-
-            for row in range(layout.rowCount()):
-                for col in range(layout.columnCount()):
-                    try:
-                        item = layout.itemAt(row, col)
-                        if item is not None and isinstance(item, pg.AxisItem):
-                            if not ((row == 2 and col == 1) or (row == 3 and col == 2)):
-                                items_to_remove.append(item)
-                    except:
-                        pass
-
-            for item in items_to_remove:
-                try:
-                    layout.removeItem(item)
-                except Exception as e:
-                    logging.warning(f"Error removing axis item: {e}")
-        except Exception as e:
-            logging.warning(f"Error clearing axis layout: {e}")
-
-        # Reset storage
-        self.plot_items = []
-        self.original_lines = []
-        self.smoothed_lines = []
-        self.y_axes = []
-
-        logging.info("All axes cleared successfully")
-
     # ========================================================================
     # PUBLIC API METHODS
     # ========================================================================
@@ -1317,8 +1143,11 @@ class PlotArea(QWidget):
         """Clear the entire plot"""
         logging.info("Clearing plot")
 
-        self._clear_all_axes()
-        self.plot_widget.clear()
+        self.ax.clear()
+
+        # Clear additional axes
+        for ax in self.y_axes:
+            self.figure.delaxes(ax)
 
         # Reset all data structures
         self.plot_items = []
@@ -1337,15 +1166,25 @@ class PlotArea(QWidget):
 
         self._clear_legend()
 
-        # Re-add basic items
-        self.plot_widget.addItem(self.crosshair_v, ignoreBounds=True)
-        self.plot_widget.addItem(self.crosshair_h, ignoreBounds=True)
-        self.plot_widget.addItem(self.cursor_label, ignoreBounds=True)
+        # Re-enable grid
+        self.ax.grid(True, alpha=0.3)
 
-        self.plot_widget.setTitle("No data to display")
-        self.plot_widget.setLabel('bottom', "X-axis")
-        self.plot_widget.setLabel('left', "Y-axis")
+        # Re-create crosshair elements
+        self.crosshair_vline = self.ax.axvline(x=0, color='k', linestyle='--', linewidth=1, visible=False)
+        self.crosshair_hline = self.ax.axhline(y=0, color='k', linestyle='--', linewidth=1, visible=False)
+        self.cursor_annotation = self.ax.annotate(
+            '', xy=(0, 0), xytext=(10, 10),
+            textcoords='offset points',
+            bbox=dict(boxstyle='round,pad=0.5', fc='white', alpha=0.8),
+            visible=False
+        )
+
+        self.ax.set_title("No data to display")
+        self.ax.set_xlabel("X-axis")
+        self.ax.set_ylabel("Y-axis")
         self.reset_title()
+
+        self.canvas.draw()
 
         logging.info("Plot cleared successfully")
 
@@ -1355,13 +1194,14 @@ class PlotArea(QWidget):
         self.title_input.clear()
         if hasattr(self, 'last_plot_params'):
             self.last_plot_params['title'] = ""
-        self.plot_widget.setTitle("")
+        self.ax.set_title("")
 
     def set_default_title(self, title):
         """Set default title in input field and apply it"""
         self.title_input.setText(title)
         self.current_title = title
-        self.plot_widget.setTitle(title)
+        self.ax.set_title(title)
+        self.canvas.draw_idle()
         if hasattr(self, 'last_plot_params'):
             self.last_plot_params['title'] = title
 
@@ -1374,7 +1214,8 @@ class PlotArea(QWidget):
         """Toggle visibility of original data lines"""
         show_original = True
         for line in self.original_lines:
-            line.setVisible(show_original)
+            line.set_visible(show_original)
+        self.canvas.draw_idle()
         logging.info("Original data visibility toggled")
 
     def get_show_original_state(self):
@@ -1389,7 +1230,7 @@ class PlotArea(QWidget):
         """Enable text insertion mode with given text"""
         self.text_insertion_mode = True
         self.pending_text = text
-        self.plot_widget.setCursor(Qt.CrossCursor)
+        self.canvas.setCursor(Qt.CrossCursor)
 
         QMessageBox.information(
             self, "Text Insertion Mode",
