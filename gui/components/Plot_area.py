@@ -255,13 +255,13 @@ class PlotArea(QWidget):
         self.main_plot.scene().sigMouseMoved.connect(self._on_mouse_moved)
         self.main_plot.scene().sigMouseClicked.connect(self._on_mouse_click)
 
-        # Create crosshair (initially hidden)
-        self.crosshair_vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('k', style=QtCore.Qt.DashLine))
-        self.crosshair_hline = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen('k', style=QtCore.Qt.DashLine))
-        self.crosshair_vline.setVisible(False)
-        self.crosshair_hline.setVisible(False)
-        self.main_plot.addItem(self.crosshair_vline)
-        self.main_plot.addItem(self.crosshair_hline)
+        # # Create crosshair (initially hidden)
+        # self.crosshair_vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('k', style=QtCore.Qt.DashLine))
+        # self.crosshair_hline = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen('k', style=QtCore.Qt.DashLine))
+        # self.crosshair_vline.setVisible(False)
+        # self.crosshair_hline.setVisible(False)
+        # self.main_plot.addItem(self.crosshair_vline)
+        # self.main_plot.addItem(self.crosshair_hline)
 
         # Create cursor text item
         self.cursor_annotation = pg.TextItem("", anchor=(0, 1), color='k')
