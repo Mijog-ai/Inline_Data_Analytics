@@ -99,9 +99,6 @@ class PlotArea(QWidget):
         self._create_toolbar()
         self.layout.addWidget(self.toolbar)
 
-        # X-axis range controls
-        self._create_x_axis_controls()
-
         # Main plot widget
         self._create_plot_widget()
         self.layout.addWidget(self.graphics_view)
@@ -127,39 +124,6 @@ class PlotArea(QWidget):
         title_layout.addWidget(self.set_title_button)
         self.layout.addLayout(title_layout)
 
-
-    def _create_x_axis_controls(self):
-        """Create X-axis range controls"""
-        x_axis_layout = QHBoxLayout()
-
-        x_label = QLabel("X-Axis Range:")
-        x_label.setStyleSheet("font-weight: bold;")
-        x_axis_layout.addWidget(x_label)
-
-        x_axis_layout.addWidget(QLabel("Min:"))
-        self.x_min_input = QLineEdit("0.0")
-        self.x_min_input.setFixedWidth(100)
-        x_axis_layout.addWidget(self.x_min_input)
-
-        x_axis_layout.addWidget(QLabel("Max:"))
-        self.x_max_input = QLineEdit("100.0")
-        self.x_max_input.setFixedWidth(100)
-        x_axis_layout.addWidget(self.x_max_input)
-
-        # Apply and Reset buttons
-        apply_button = QPushButton("Apply X-Range")
-        apply_button.setFixedWidth(120)
-        apply_button.clicked.connect(self.update_x_axis_range)
-        x_axis_layout.addWidget(apply_button)
-
-        reset_button = QPushButton("Reset X-Range")
-        reset_button.setFixedWidth(120)
-        reset_button.clicked.connect(self.reset_x_axis_range)
-        x_axis_layout.addWidget(reset_button)
-
-        x_axis_layout.addStretch()
-
-        self.layout.addLayout(x_axis_layout)
 
     def _create_toolbar(self):
         """Create toolbar with all interactive tools"""
@@ -248,12 +212,8 @@ class PlotArea(QWidget):
         self.main_plot.setLabel('left', 'Y-axis')
         self.main_plot.showGrid(x=True, y=True, alpha=0.3)
 
-        # Enable mouse interaction
-        self.main_plot.setMouseEnabled(x=True, y=True)
-
-        # Connect mouse events
-        self.main_plot.scene().sigMouseMoved.connect(self._on_mouse_moved)
-        self.main_plot.scene().sigMouseClicked.connect(self._on_mouse_click)
+        # Disable all mouse interactions
+        self.main_plot.setMouseEnabled(x=False, y=False)
 
         # # Create crosshair (initially hidden)
         # self.crosshair_vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('k', style=QtCore.Qt.DashLine))
@@ -471,16 +431,9 @@ class PlotArea(QWidget):
             # Get X data
             self.x_data = df[x_column].values
 
-            # Calculate default axis ranges for X
-            x_min_default = float(np.min(self.x_data))
-            x_max_default = float(np.max(self.x_data))
-            x_padding = (x_max_default - x_min_default) * 0.1
-            self.x_min_default = x_min_default - x_padding
-            self.x_max_default = x_max_default + x_padding
-
-            # Update X-axis range inputs
-            self.x_min_input.setText(f"{self.x_min_default:.2f}")
-            self.x_max_input.setText(f"{self.x_max_default:.2f}")
+            # Calculate exact min/max for X-axis (no padding)
+            x_min = float(np.min(self.x_data))
+            x_max = float(np.max(self.x_data))
 
             # Clear previous plot
             self._clear_all_plot_items()
@@ -489,8 +442,8 @@ class PlotArea(QWidget):
             self.main_plot.setTitle(title)
             self.main_plot.setLabel('bottom', x_column)
 
-            # Set initial X-axis range
-            self.main_plot.setXRange(self.x_min_default, self.x_max_default, padding=0)
+            # Set X-axis range to exact min/max of data
+            self.main_plot.setXRange(x_min, x_max, padding=0)
 
             # Store plot parameters
             self.last_plot_params = {
@@ -648,33 +601,6 @@ class PlotArea(QWidget):
         """Update all ViewBox geometries to match the main plot"""
         for item in self.plot_items[1:]:  # Skip first one (uses main ViewBox)
             item['viewbox'].setGeometry(self.main_plot.vb.sceneBoundingRect())
-
-
-    def update_x_axis_range(self):
-        """Update the X-axis range based on input values"""
-        try:
-            x_min = float(self.x_min_input.text())
-            x_max = float(self.x_max_input.text())
-
-            # Validate range
-            if x_min >= x_max:
-                QMessageBox.warning(self, "Invalid Range",
-                                   "X-axis minimum must be less than maximum!")
-                return
-
-            # Set the X-axis range
-            self.main_plot.setXRange(x_min, x_max, padding=0)
-
-        except ValueError:
-            QMessageBox.warning(self, "Invalid Input",
-                               "Please enter valid numeric values!")
-
-    def reset_x_axis_range(self):
-        """Reset X-axis range to default values"""
-        if hasattr(self, 'x_min_default') and hasattr(self, 'x_max_default'):
-            self.x_min_input.setText(f"{self.x_min_default:.2f}")
-            self.x_max_input.setText(f"{self.x_max_default:.2f}")
-            self.update_x_axis_range()
 
     # ========================================================================
     # LEGEND MANAGEMENT
