@@ -46,11 +46,8 @@ class DataFilter(QGroupBox):
             if not column:
                 raise ValueError("Please select a column to filter")
 
-            if not min_val and not max_val:
+            if min_val is None and max_val is None:
                 raise ValueError("Please enter at least one filter value")
-
-            min_val = float(min_val) if min_val else None
-            max_val = float(max_val) if max_val else None
 
             if min_val is not None and max_val is not None and min_val > max_val:
                 raise ValueError("Min value must be less than or equal to Max value")

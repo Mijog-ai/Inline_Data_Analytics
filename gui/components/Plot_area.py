@@ -758,68 +758,94 @@ class PlotArea(QWidget):
 
     def _add_highlight(self, x):
         """Add vertical line and highlight points at x position"""
-        xlabel = self.x_column if self.x_column else 'X'
-        all_highlight_items = []
+        try:
+            # Check if there are any plot items
+            if not self.plot_items or len(self.plot_items) == 0:
+                QMessageBox.warning(
+                    self, "No Data",
+                    "No plot data available. Please plot data first before adding highlights."
+                )
+                logging.warning("Attempted to add highlight with no plot data")
+                return
 
-        for item in self.plot_items:
-            x_data = item['x_data']
-            y_data = item['y_data']
+            xlabel = self.x_column if self.x_column else 'X'
+            all_highlight_items = []
+            highlights_added = False
 
-            if len(x_data) == 0:
-                continue
+            for item in self.plot_items:
+                x_data = item['x_data']
+                y_data = item['y_data']
 
-            # Find nearest point
-            idx = self._find_nearest_index(x_data, x)
-            nearest_x = x_data[idx]
-            nearest_y = y_data[idx]
+                if len(x_data) == 0:
+                    continue
 
-            viewbox = item['viewbox']
-            color = item['color']
+                # Find nearest point
+                idx = self._find_nearest_index(x_data, x)
+                nearest_x = x_data[idx]
+                nearest_y = y_data[idx]
 
-            # Create vertical dashed line - add to main plot (shared across all)
-            vline = pg.InfiniteLine(
-                pos=nearest_x,
-                angle=90,
-                pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2)
-            )
-            self.main_plot.addItem(vline)  # Add to main plot, not viewbox
-            all_highlight_items.append(vline)
+                viewbox = item['viewbox']
+                color = item['color']
 
-            # Create horizontal dashed line - add to specific viewbox
-            hline = pg.InfiniteLine(
-                pos=nearest_y,
-                angle=0,
-                pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2)
-            )
-            viewbox.addItem(hline)
-            all_highlight_items.append(hline)
+                # Create vertical dashed line - add to main plot (shared across all)
+                vline = pg.InfiniteLine(
+                    pos=nearest_x,
+                    angle=90,
+                    pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2)
+                )
+                self.main_plot.addItem(vline)  # Add to main plot, not viewbox
+                all_highlight_items.append(vline)
 
-            # Create highlight point at intersection
-            highlight_scatter = pg.ScatterPlotItem(
-                x=[nearest_x],
-                y=[nearest_y],
-                pen=pg.mkPen('r', width=2),
-                brush=pg.mkBrush('r'),
-                size=12
-            )
-            viewbox.addItem(highlight_scatter)
-            all_highlight_items.append(highlight_scatter)
+                # Create horizontal dashed line - add to specific viewbox
+                hline = pg.InfiniteLine(
+                    pos=nearest_y,
+                    angle=0,
+                    pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2)
+                )
+                viewbox.addItem(hline)
+                all_highlight_items.append(hline)
 
-            # Create text annotation with X and Y values
-            text = pg.TextItem(
-                f"{xlabel}: {nearest_x:.2f}\n{item['name']}: {nearest_y:.2f}",
-                anchor=(0, 1),
-                color='k',
-                border=pg.mkPen('k', width=1),
-                fill=pg.mkBrush(255, 255, 255, 200)
-            )
-            text.setPos(nearest_x, nearest_y)
-            viewbox.addItem(text)
-            all_highlight_items.append(text)
+                # Create highlight point at intersection
+                highlight_scatter = pg.ScatterPlotItem(
+                    x=[nearest_x],
+                    y=[nearest_y],
+                    pen=pg.mkPen('r', width=2),
+                    brush=pg.mkBrush('r'),
+                    size=12
+                )
+                viewbox.addItem(highlight_scatter)
+                all_highlight_items.append(highlight_scatter)
 
-        # Store all highlight items for potential removal later
-        self.vertical_lines.append((x, all_highlight_items))
-        logging.info(f"Added highlight at x={x:.2f} for {len(self.plot_items)} columns")
+                # Create text annotation with X and Y values
+                text = pg.TextItem(
+                    f"{xlabel}: {nearest_x:.2f}\n{item['name']}: {nearest_y:.2f}",
+                    anchor=(0, 1),
+                    color='k',
+                    border=pg.mkPen('k', width=1),
+                    fill=pg.mkBrush(255, 255, 255, 200)
+                )
+                text.setPos(nearest_x, nearest_y)
+                viewbox.addItem(text)
+                all_highlight_items.append(text)
+
+                highlights_added = True
+
+            if not highlights_added:
+                QMessageBox.warning(
+                    self, "No Data",
+                    "No valid data points found to highlight."
+                )
+                logging.warning("No valid data points found for highlighting")
+                return
+
+            # Store all highlight items for potential removal later
+            self.vertical_lines.append((x, all_highlight_items))
+            logging.info(f"Added highlight at x={x:.2f} for {len(self.plot_items)} columns")
+
+        except Exception as e:
+            logging.error(f"Error adding highlight: {str(e)}")
+            logging.error(traceback.format_exc())
+            QMessageBox.critical(self, "Error", f"Failed to add highlight: {str(e)}")
 
     def _find_nearest_index(self, x_data, x_value):
         """Find nearest index using binary search"""
