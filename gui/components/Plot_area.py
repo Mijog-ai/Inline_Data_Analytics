@@ -99,6 +99,9 @@ class PlotArea(QWidget):
         self._create_toolbar()
         self.layout.addWidget(self.toolbar)
 
+        # X-axis range controls
+        self._create_x_axis_controls()
+
         # Main plot widget
         self._create_plot_widget()
         self.layout.addWidget(self.graphics_view)
@@ -124,6 +127,39 @@ class PlotArea(QWidget):
         title_layout.addWidget(self.set_title_button)
         self.layout.addLayout(title_layout)
 
+
+    def _create_x_axis_controls(self):
+        """Create X-axis range controls"""
+        x_axis_layout = QHBoxLayout()
+
+        x_label = QLabel("X-Axis Range:")
+        x_label.setStyleSheet("font-weight: bold;")
+        x_axis_layout.addWidget(x_label)
+
+        x_axis_layout.addWidget(QLabel("Min:"))
+        self.x_min_input = QLineEdit("0.0")
+        self.x_min_input.setFixedWidth(100)
+        x_axis_layout.addWidget(self.x_min_input)
+
+        x_axis_layout.addWidget(QLabel("Max:"))
+        self.x_max_input = QLineEdit("100.0")
+        self.x_max_input.setFixedWidth(100)
+        x_axis_layout.addWidget(self.x_max_input)
+
+        # Apply and Reset buttons
+        apply_button = QPushButton("Apply X-Range")
+        apply_button.setFixedWidth(120)
+        apply_button.clicked.connect(self.update_x_axis_range)
+        x_axis_layout.addWidget(apply_button)
+
+        reset_button = QPushButton("Reset X-Range")
+        reset_button.setFixedWidth(120)
+        reset_button.clicked.connect(self.reset_x_axis_range)
+        x_axis_layout.addWidget(reset_button)
+
+        x_axis_layout.addStretch()
+
+        self.layout.addLayout(x_axis_layout)
 
     def _create_toolbar(self):
         """Create toolbar with all interactive tools"""
@@ -212,8 +248,12 @@ class PlotArea(QWidget):
         self.main_plot.setLabel('left', 'Y-axis')
         self.main_plot.showGrid(x=True, y=True, alpha=0.3)
 
-        # Disable all mouse interactions
+        # Enable mouse interaction
         self.main_plot.setMouseEnabled(x=False, y=False)
+
+        # Connect mouse events
+        self.main_plot.scene().sigMouseMoved.connect(self._on_mouse_moved)
+        self.main_plot.scene().sigMouseClicked.connect(self._on_mouse_click)
 
         # # Create crosshair (initially hidden)
         # self.crosshair_vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('k', style=QtCore.Qt.DashLine))
@@ -260,14 +300,7 @@ class PlotArea(QWidget):
         self.legend_widget.setVisible(self.show_legend)
         logging.info(f"Legend visibility: {self.show_legend}")
 
-    def _on_toggle_highlighter(self, state):
-        """Toggle highlight mode"""
-        self.yaxis_approx_value_highlighter = bool(state)
 
-        if state:
-            self._deactivate_other_modes(exclude='highlighter')
-
-        logging.info(f"Highlight mode: {state}")
 
     def _on_toggle_text_insertion(self, checked):
         """Toggle text insertion mode"""
@@ -360,15 +393,17 @@ class PlotArea(QWidget):
         x, y = mouse_point.x(), mouse_point.y()
 
         # Update crosshair position
-        self.crosshair_vline.setPos(x)
-        self.crosshair_hline.setPos(y)
+        if self.crosshair_vline:
+            self.crosshair_vline.setPos(x)
+        if self.crosshair_hline:
+            self.crosshair_hline.setPos(y)
 
         # Build cursor label text
         xlabel = self.x_column if self.x_column else 'X'
         cursor_text = f"{xlabel}: {x:.2f}\n"
 
         for item in self.plot_items:
-            if 'scatter' in item:
+            if 'plot_line' in item:
                 x_data = item['x_data']
                 y_data = item['y_data']
 
@@ -401,13 +436,21 @@ class PlotArea(QWidget):
         if self.text_insertion_mode:
             self._insert_floating_text_at(x, y)
 
+    def _on_toggle_highlighter(self, state):
+        """Toggle highlight mode"""
+        self.yaxis_approx_value_highlighter = bool(state)
+
+        if state:
+            self._deactivate_other_modes(exclude='highlighter')
+
+        logging.info(f"Highlight mode: {state}")
+
     def _handle_right_click(self, x, y):
         """Handle right mouse click based on active mode"""
         if self.text_insertion_mode:
             self._cancel_text_insertion()
         elif self.yaxis_approx_value_highlighter:
             self._add_highlight(x)
-
     # ========================================================================
     # MULTI-AXIS PLOTTING FUNCTIONALITY
     # ========================================================================
@@ -431,10 +474,16 @@ class PlotArea(QWidget):
             # Get X data
             self.x_data = df[x_column].values
 
-            # Calculate exact min/max for X-axis (no padding)
-            x_min = float(np.min(self.x_data))
-            x_max = float(np.max(self.x_data))
+            # Calculate default axis ranges for X
+            x_min_default = float(np.min(self.x_data))
+            x_max_default = float(np.max(self.x_data))
 
+            self.x_min_default = x_min_default
+            self.x_max_default = x_max_default
+
+            # Update X-axis range inputs
+            self.x_min_input.setText(f"{self.x_min_default:.2f}")
+            self.x_max_input.setText(f"{self.x_max_default:.2f}")
             # Clear previous plot
             self._clear_all_plot_items()
 
@@ -442,8 +491,8 @@ class PlotArea(QWidget):
             self.main_plot.setTitle(title)
             self.main_plot.setLabel('bottom', x_column)
 
-            # Set X-axis range to exact min/max of data
-            self.main_plot.setXRange(x_min, x_max, padding=0)
+            # Set initial X-axis range
+            self.main_plot.setXRange(self.x_min_default, self.x_max_default, padding=0)
 
             # Store plot parameters
             self.last_plot_params = {
@@ -482,7 +531,11 @@ class PlotArea(QWidget):
             return
 
         # Get Y data from DataFrame
-        y_data = self.current_df[column_name].values
+        y_data_original = self.current_df[column_name].values
+        y_data = y_data_original.copy()
+
+        # Track if smoothing was applied
+        smoothing_applied = False
 
         # Apply smoothing if enabled
         if smoothing_params and smoothing_params.get('apply', False):
@@ -494,6 +547,7 @@ class PlotArea(QWidget):
                     poly_order=smoothing_params.get('poly_order', 3),
                     sigma=smoothing_params.get('sigma', 2)
                 )
+                smoothing_applied = True
                 logging.info(f"Applied {smoothing_params.get('method', 'unknown')} smoothing to {column_name}")
             except Exception as e:
                 logging.warning(f"Failed to apply smoothing to {column_name}: {str(e)}")
@@ -536,18 +590,31 @@ class PlotArea(QWidget):
             # Store axis reference
             self.y_axes.append(axis)
 
-        # Create scatter plot for this column
-        scatter = pg.ScatterPlotItem(
+        # Create original data line plot (background) if smoothing was applied
+        plot_original = None
+        if smoothing_applied:
+            # Light color for original data (20% opacity = 51/255)
+            light_color = (*color, 51)
+            plot_original = pg.PlotDataItem(
+                x=self.x_data,
+                y=y_data_original,
+                pen=pg.mkPen(light_color, width=1.5),
+                name=f"{column_name} (Original)"
+            )
+            view_box.addItem(plot_original)
+
+        # Create smoothed/main line plot (foreground)
+        # Dark, fully opaque color for smoothed data
+        dark_color = (*color, 255)
+        plot_line = pg.PlotDataItem(
             x=self.x_data,
             y=y_data,
-            pen=pg.mkPen(None),
-            brush=pg.mkBrush(*color, 150),
-            size=6,
+            pen=pg.mkPen(dark_color, width=3),  # Thicker and fully opaque
             name=column_name
         )
 
         # Add to the appropriate ViewBox
-        view_box.addItem(scatter)
+        view_box.addItem(plot_line)
 
         # Auto-range for this Y-axis
         view_box.enableAutoRange(axis=pg.ViewBox.YAxis)
@@ -555,16 +622,20 @@ class PlotArea(QWidget):
         # Store plot item info
         self.plot_items.append({
             'name': column_name,
-            'scatter': scatter,
+            'plot_line': plot_line,
+            'plot_original': plot_original,  # Store original line plot
             'viewbox': view_box,
             'axis': axis,
             'color': color,
             'x_data': self.x_data,
-            'y_data': y_data
+            'y_data': y_data,
+            'y_data_original': y_data_original,  # Store original y data
+            'smoothing_applied': smoothing_applied
         })
         self.axis_colors.append(color)
 
-        logging.info(f"Added column: {column_name} with color {color}")
+        logging.info(f"Added column: {column_name} with color {color}" +
+                     (" (with smoothing)" if smoothing_applied else ""))
 
     def _remove_last_plot_item(self):
         """Remove the last added column (internal method)"""
@@ -574,8 +645,12 @@ class PlotArea(QWidget):
         # Get last item
         last_item = self.plot_items.pop()
 
-        # Remove scatter plot
-        last_item['viewbox'].removeItem(last_item['scatter'])
+        # Remove line plot
+        last_item['viewbox'].removeItem(last_item['plot_line'])
+
+        # Remove original line plot if it exists
+        if last_item.get('plot_original'):
+            last_item['viewbox'].removeItem(last_item['plot_original'])
 
         # Remove axis and viewbox if not the first one
         if len(self.plot_items) > 0:  # If this wasn't the first plot
@@ -601,6 +676,33 @@ class PlotArea(QWidget):
         """Update all ViewBox geometries to match the main plot"""
         for item in self.plot_items[1:]:  # Skip first one (uses main ViewBox)
             item['viewbox'].setGeometry(self.main_plot.vb.sceneBoundingRect())
+
+
+    def update_x_axis_range(self):
+        """Update the X-axis range based on input values"""
+        try:
+            x_min = float(self.x_min_input.text())
+            x_max = float(self.x_max_input.text())
+
+            # Validate range
+            if x_min >= x_max:
+                QMessageBox.warning(self, "Invalid Range",
+                                   "X-axis minimum must be less than maximum!")
+                return
+
+            # Set the X-axis range
+            self.main_plot.setXRange(x_min, x_max, padding=0)
+
+        except ValueError:
+            QMessageBox.warning(self, "Invalid Input",
+                               "Please enter valid numeric values!")
+
+    def reset_x_axis_range(self):
+        """Reset X-axis range to default values"""
+        if hasattr(self, 'x_min_default') and hasattr(self, 'x_max_default'):
+            self.x_min_input.setText(f"{self.x_min_default:.2f}")
+            self.x_max_input.setText(f"{self.x_max_default:.2f}")
+            self.update_x_axis_range()
 
     # ========================================================================
     # LEGEND MANAGEMENT
@@ -657,7 +759,7 @@ class PlotArea(QWidget):
     def _add_highlight(self, x):
         """Add vertical line and highlight points at x position"""
         xlabel = self.x_column if self.x_column else 'X'
-        highlight_items = []
+        all_highlight_items = []
 
         for item in self.plot_items:
             x_data = item['x_data']
@@ -674,34 +776,82 @@ class PlotArea(QWidget):
             viewbox = item['viewbox']
             color = item['color']
 
-            # Create vertical line
-            vline = pg.InfiniteLine(pos=nearest_x, angle=90, pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2))
-            viewbox.addItem(vline)
-            highlight_items.append(vline)
+            # Create vertical dashed line - add to main plot (shared across all)
+            vline = pg.InfiniteLine(
+                pos=nearest_x,
+                angle=90,
+                pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2)
+            )
+            self.main_plot.addItem(vline)  # Add to main plot, not viewbox
+            all_highlight_items.append(vline)
 
-            # Create highlight point
-            scatter = pg.ScatterPlotItem(
+            # Create horizontal dashed line - add to specific viewbox
+            hline = pg.InfiniteLine(
+                pos=nearest_y,
+                angle=0,
+                pen=pg.mkPen('gray', style=QtCore.Qt.DashLine, width=2)
+            )
+            viewbox.addItem(hline)
+            all_highlight_items.append(hline)
+
+            # Create highlight point at intersection
+            highlight_scatter = pg.ScatterPlotItem(
                 x=[nearest_x],
                 y=[nearest_y],
                 pen=pg.mkPen('r', width=2),
                 brush=pg.mkBrush('r'),
                 size=12
             )
-            viewbox.addItem(scatter)
-            highlight_items.append(scatter)
+            viewbox.addItem(highlight_scatter)
+            all_highlight_items.append(highlight_scatter)
 
-            # Create text annotation
+            # Create text annotation with X and Y values
             text = pg.TextItem(
                 f"{xlabel}: {nearest_x:.2f}\n{item['name']}: {nearest_y:.2f}",
                 anchor=(0, 1),
-                color='k'
+                color='k',
+                border=pg.mkPen('k', width=1),
+                fill=pg.mkBrush(255, 255, 255, 200)
             )
             text.setPos(nearest_x, nearest_y)
             viewbox.addItem(text)
-            highlight_items.append(text)
+            all_highlight_items.append(text)
 
-        self.vertical_lines.append((x, highlight_items))
-        logging.info(f"Added highlight at x={x:.2f}")
+        # Store all highlight items for potential removal later
+        self.vertical_lines.append((x, all_highlight_items))
+        logging.info(f"Added highlight at x={x:.2f} for {len(self.plot_items)} columns")
+
+    def _find_nearest_index(self, x_data, x_value):
+        """Find nearest index using binary search"""
+        if len(x_data) == 0:
+            return 0
+
+        idx = np.searchsorted(x_data, x_value)
+        idx = np.clip(idx, 0, len(x_data) - 1)
+
+        if idx > 0:
+            if abs(x_data[idx - 1] - x_value) < abs(x_data[idx] - x_value):
+                idx = idx - 1
+
+        return idx
+
+    # Optional: Add method to clear all highlights
+    def clear_all_highlights(self):
+        """Clear all highlight lines and annotations"""
+        for _, highlight_items in self.vertical_lines:
+            for item in highlight_items:
+                try:
+                    # Try to remove from scene
+                    if hasattr(item, 'scene') and item.scene() is not None:
+                        item.scene().removeItem(item)
+                    # Also try to remove from parent item
+                    elif hasattr(item, 'parentItem') and item.parentItem() is not None:
+                        item.parentItem().removeItem(item)
+                except Exception as e:
+                    logging.warning(f"Could not remove highlight item: {str(e)}")
+
+        self.vertical_lines = []
+        logging.info("Cleared all highlights")
 
     # ========================================================================
     # TEXT INSERTION/REMOVAL FUNCTIONALITY
