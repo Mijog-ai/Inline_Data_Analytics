@@ -95,9 +95,6 @@ class PlotArea(QWidget):
         # Title controls
         self._create_title_controls()
 
-        # Column selector controls
-        self._create_column_selector()
-
         # Toolbar with interactive tools
         self._create_toolbar()
         self.layout.addWidget(self.toolbar)
@@ -130,50 +127,6 @@ class PlotArea(QWidget):
         title_layout.addWidget(self.set_title_button)
         self.layout.addLayout(title_layout)
 
-    def _create_column_selector(self):
-        """Create column selector controls"""
-        selector_frame = QFrame()
-        selector_frame.setFrameStyle(QFrame.StyledPanel)
-        selector_layout = QHBoxLayout()
-        selector_frame.setLayout(selector_layout)
-
-        column_label = QLabel("Select Column to Add:")
-        column_label.setStyleSheet("font-weight: bold;")
-        selector_layout.addWidget(column_label)
-
-        self.column_dropdown = QComboBox()
-        self.column_dropdown.setFixedWidth(200)
-        selector_layout.addWidget(self.column_dropdown)
-
-        # Add to Plot button
-        add_button = QPushButton("Add to Plot")
-        add_button.setFixedWidth(100)
-        add_button.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
-        add_button.clicked.connect(self.add_column_to_plot)
-        selector_layout.addWidget(add_button)
-
-        # Remove Last button
-        remove_button = QPushButton("Remove Last")
-        remove_button.setFixedWidth(100)
-        remove_button.setStyleSheet("background-color: #ff9800; color: white; font-weight: bold;")
-        remove_button.clicked.connect(self.remove_last_column)
-        selector_layout.addWidget(remove_button)
-
-        # Clear Plot button
-        clear_button = QPushButton("Clear All")
-        clear_button.setFixedWidth(100)
-        clear_button.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
-        clear_button.clicked.connect(self.clear_all_columns)
-        selector_layout.addWidget(clear_button)
-
-        selector_layout.addStretch()
-
-        # Active columns label
-        self.active_label = QLabel("Active Columns: None")
-        self.active_label.setStyleSheet("color: blue; font-style: italic;")
-        selector_layout.addWidget(self.active_label)
-
-        self.layout.addWidget(selector_frame)
 
     def _create_x_axis_controls(self):
         """Create X-axis range controls"""
@@ -500,7 +453,7 @@ class PlotArea(QWidget):
     # ========================================================================
 
     def plot_data(self, df, x_column, y_columns, smoothing_params, limit_lines=[], title=None):
-        """Main plotting function - stores data and prepares for column-based plotting"""
+        """Main plotting function - directly plots all selected Y columns with smoothing"""
         try:
             # Update title
             if title is not None:
@@ -508,7 +461,7 @@ class PlotArea(QWidget):
             else:
                 title = self.current_title
 
-            logging.info(f"Setting up plot: x={x_column}, available y={y_columns}, title={title}")
+            logging.info(f"Plotting data: x={x_column}, y={y_columns}, title={title}")
 
             # Store dataframe and column info
             self.current_df = df
@@ -530,7 +483,7 @@ class PlotArea(QWidget):
             self.x_max_input.setText(f"{self.x_max_default:.2f}")
 
             # Clear previous plot
-            self.clear_all_columns()
+            self._clear_all_plot_items()
 
             # Set labels and title
             self.main_plot.setTitle(title)
@@ -538,10 +491,6 @@ class PlotArea(QWidget):
 
             # Set initial X-axis range
             self.main_plot.setXRange(self.x_min_default, self.x_max_default, padding=0)
-
-            # Populate column dropdown
-            self.column_dropdown.clear()
-            self.column_dropdown.addItems(y_columns)
 
             # Store plot parameters
             self.last_plot_params = {
@@ -553,34 +502,44 @@ class PlotArea(QWidget):
                 'title': title
             }
 
-            logging.info("Plot setup completed successfully")
+            # Plot all selected Y columns
+            for y_column in y_columns:
+                self._add_column_with_smoothing(y_column, smoothing_params)
+
+            # Update legend
+            if self.show_legend:
+                self._populate_legend()
+
+            logging.info(f"Successfully plotted {len(y_columns)} columns")
 
         except Exception as e:
             logging.error(f"Error in plot_data: {str(e)}")
             logging.error(traceback.format_exc())
-            QMessageBox.critical(self, "Error", f"An error occurred while setting up plot: {str(e)}")
+            QMessageBox.critical(self, "Error", f"An error occurred while plotting: {str(e)}")
 
-    def add_column_to_plot(self):
-        """Add selected column data to the plot with its own Y-axis"""
+    def _add_column_with_smoothing(self, column_name, smoothing_params):
+        """Add a column to the plot with smoothing applied"""
         if self.current_df is None:
-            QMessageBox.warning(self, "No Data", "Please load and plot data first.")
-            return
-
-        # Get selected column name from dropdown
-        column_name = self.column_dropdown.currentText()
-
-        if not column_name:
-            QMessageBox.warning(self, "No Selection", "Please select a column to add.")
+            logging.error("No data available to plot")
             return
 
         # Check if column is already plotted
         if column_name in [item['name'] for item in self.plot_items]:
-            QMessageBox.information(self, "Column Already Added",
-                                   f"Column '{column_name}' is already in the plot!")
+            logging.warning(f"Column '{column_name}' already plotted, skipping")
             return
 
-        # Get data directly from DataFrame
+        # Get Y data from DataFrame
         y_data = self.current_df[column_name].values
+
+        # Apply smoothing if enabled
+        if smoothing_params and smoothing_params.get('apply', False):
+            try:
+                x_data = self.x_data
+                y_data = apply_smoothing(x_data, y_data, smoothing_params)
+                logging.info(f"Applied {smoothing_params.get('method', 'unknown')} smoothing to {column_name}")
+            except Exception as e:
+                logging.warning(f"Failed to apply smoothing to {column_name}: {str(e)}")
+                # Continue with original data if smoothing fails
 
         # Get color for this column
         color_index = len(self.plot_items) % len(self.colors)
@@ -647,19 +606,11 @@ class PlotArea(QWidget):
         })
         self.axis_colors.append(color)
 
-        # Update active columns label
-        self.update_active_label()
-
-        # Update legend
-        if self.show_legend:
-            self._populate_legend()
-
         logging.info(f"Added column: {column_name} with color {color}")
 
-    def remove_last_column(self):
-        """Remove the last added column"""
+    def _remove_last_plot_item(self):
+        """Remove the last added column (internal method)"""
         if len(self.plot_items) == 0:
-            QMessageBox.information(self, "No Columns", "No columns to remove!")
             return
 
         # Get last item
@@ -679,35 +630,20 @@ class PlotArea(QWidget):
             self.main_plot.getAxis('left').setLabel('')
 
         self.axis_colors.pop()
-
-        # Update active columns label
-        self.update_active_label()
-
-        # Update legend
-        if self.show_legend:
-            self._populate_legend()
-
         logging.info(f"Removed column: {last_item['name']}")
 
-    def clear_all_columns(self):
-        """Clear all plotted columns"""
+    def _clear_all_plot_items(self):
+        """Clear all plotted columns (internal method)"""
         while len(self.plot_items) > 0:
-            self.remove_last_column()
+            self._remove_last_plot_item()
 
-        logging.info("Cleared all columns")
+        logging.info("Cleared all plot items")
 
     def update_views(self):
         """Update all ViewBox geometries to match the main plot"""
         for item in self.plot_items[1:]:  # Skip first one (uses main ViewBox)
             item['viewbox'].setGeometry(self.main_plot.vb.sceneBoundingRect())
 
-    def update_active_label(self):
-        """Update the label showing active columns"""
-        if len(self.plot_items) == 0:
-            self.active_label.setText("Active Columns: None")
-        else:
-            column_list = ", ".join([item['name'] for item in self.plot_items])
-            self.active_label.setText(f"Active Columns: {column_list}")
 
     def update_x_axis_range(self):
         """Update the X-axis range based on input values"""
@@ -920,7 +856,7 @@ class PlotArea(QWidget):
         logging.info("Clearing plot")
 
         # Clear all columns
-        self.clear_all_columns()
+        self._clear_all_plot_items()
 
         # Clear floating texts
         for text_item in self.floating_text_items:

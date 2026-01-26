@@ -55,6 +55,9 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(self.left_panel, 1)
         self.layout.addWidget(self.right_panel, 4)
 
+        # Connect smoothing parameter changes to auto-replot
+        self.left_panel.smoothing_options.params_changed.connect(self._on_smoothing_params_changed)
+
     def clear_all_data(self):
         self.df = None
         self.original_df = None
@@ -183,6 +186,20 @@ class MainWindow(QMainWindow):
     def toggle_curve_fitting(self, checked):
         self.left_panel.curve_fitting.setVisible(checked)
 
+    def _on_smoothing_params_changed(self):
+        """Triggered when smoothing parameters change - replot with new settings"""
+        # Only replot if we have data and axes selected
+        if self.df is None:
+            return
+
+        x_column = self.left_panel.axis_selection.x_combo.currentText()
+        y_columns = [item.text() for item in self.left_panel.axis_selection.y_list.selectedItems()]
+
+        if not x_column or not y_columns:
+            return
+
+        # Trigger replot with new smoothing params
+        self.left_panel.axis_selection.on_selection_changed()
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
@@ -373,10 +390,6 @@ class MainWindow(QMainWindow):
             self.right_panel.statistics_area.update_stats(self.filtered_df)
         else:
             logging.warning("No filtered data available to update statistics")
-
-    def setup_connections(self):
-        # Connect the plot button to the PlotArea's update_plot method
-        self.left_panel.axis_selection.plot_button.clicked.connect(self.update_plot)
 
     def update_plot_title(self, title):
         if self.right_panel.plot_area.last_plot_params:
