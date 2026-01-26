@@ -534,8 +534,13 @@ class PlotArea(QWidget):
         # Apply smoothing if enabled
         if smoothing_params and smoothing_params.get('apply', False):
             try:
-                x_data = self.x_data
-                y_data = apply_smoothing(x_data, y_data, smoothing_params)
+                y_data = apply_smoothing(
+                    y_data,
+                    method=smoothing_params.get('method', 'savgol'),
+                    window_length=smoothing_params.get('window_length', 21),
+                    poly_order=smoothing_params.get('poly_order', 3),
+                    sigma=smoothing_params.get('sigma', 2)
+                )
                 logging.info(f"Applied {smoothing_params.get('method', 'unknown')} smoothing to {column_name}")
             except Exception as e:
                 logging.warning(f"Failed to apply smoothing to {column_name}: {str(e)}")
