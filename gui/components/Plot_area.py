@@ -1215,9 +1215,26 @@ class PlotArea(QWidget):
             # Force update and render
             QApplication.processEvents()
 
-            # Get dimensions
-            widget_width = self.graphics_view.width()
-            widget_height = self.graphics_view.height()
+            # Get dimensions from the actual scene content, not the widget's display size
+            # This ensures we capture the complete plot even if the widget is resized
+            scene_rect = self.graphics_view.sceneRect()
+
+            # Save current view state so we can restore it later
+            current_view_range = self.main_plot.getViewBox().viewRange() if hasattr(self, 'main_plot') else None
+
+            if not scene_rect.isEmpty():
+                # Temporarily fit the view to show complete scene content
+                self.graphics_view.fitInView(scene_rect, Qt.KeepAspectRatio)
+                QApplication.processEvents()
+
+                # Use scene dimensions to capture complete content
+                widget_width = int(scene_rect.width())
+                widget_height = int(scene_rect.height())
+            else:
+                # Fallback to widget size if scene rect is not available
+                widget_width = self.graphics_view.width()
+                widget_height = self.graphics_view.height()
+
             legend_height = self.legend_widget.height() if (include_legend and self.legend_widget.isVisible()) else 0
 
             # Create high-resolution pixmap
@@ -1285,6 +1302,11 @@ class PlotArea(QWidget):
             else:
                 # Save as PNG
                 final_pixmap.save(file_name, quality=100)
+
+            # Restore original view range
+            if current_view_range and hasattr(self, 'main_plot'):
+                self.main_plot.getViewBox().setRange(xRange=current_view_range[0], yRange=current_view_range[1], padding=0)
+                QApplication.processEvents()
 
             # Restore cursor visibility
             if cursor_was_visible:
