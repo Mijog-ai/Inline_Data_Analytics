@@ -249,7 +249,7 @@ class MainWindow(QMainWindow):
                 # Use PyQtGraph's ImageExporter to save the plot
                 import pyqtgraph.exporters
 
-                exporter = pyqtgraph.exporters.ImageExporter(self.right_panel.plot_area.plot_widget.plotItem)
+                exporter = pyqtgraph.exporters.ImageExporter(self.right_panel.plot_area.main_plot)
 
                 # Ensure the file has .png extension
                 if not file_name.endswith('.png'):
