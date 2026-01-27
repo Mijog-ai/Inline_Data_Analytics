@@ -128,7 +128,7 @@ class MainWindow(QMainWindow):
                 else:
                     raise ValueError(f"Unsupported file type: {file_extension}")
 
-                if self.df is None or self.df.empty:
+                if self.df is None or len(self.df) == 0:
                     raise ValueError("No data loaded from the file")
 
                 self.original_df = self.df.copy()
@@ -205,7 +205,7 @@ class MainWindow(QMainWindow):
             self.load_file(file_path)
 
     def update_ui_after_load(self):
-        if self.df is not None and not self.df.empty:
+        if self.df is not None and len(self.df) > 0:
             columns = self.df.columns.tolist()
             self.left_panel.axis_selection.update_options(columns)
             self.left_panel.data_filter.update_columns(columns)
@@ -273,12 +273,12 @@ class MainWindow(QMainWindow):
             try:
                 with pd.ExcelWriter(file_name, engine='openpyxl') as writer:
                     # Write the main data
-                    if self.filtered_df is not None and not self.filtered_df.empty:
+                    if self.filtered_df is not None and len(self.filtered_df) > 0:
                         self.filtered_df.to_excel(writer, sheet_name='Data', index=False)
                     else:
                         self.df.to_excel(writer, sheet_name='Data', index=False)
 
-                    if self.filtered_df is not None and not self.filtered_df.empty:
+                    if self.filtered_df is not None and len(self.filtered_df) > 0:
                         stats = self.filtered_df.describe()
                         stats.to_excel(writer, sheet_name='Filtered Statistics')
 
@@ -322,15 +322,18 @@ class MainWindow(QMainWindow):
             # Apply filter using proper boolean mask combination to avoid DataFrame ambiguity
             if min_val is not None and max_val is not None:
                 # Combine both conditions with & operator
-                self.filtered_df = self.filtered_df[
-                    (self.filtered_df[column] >= min_val) & (self.filtered_df[column] <= max_val)
-                ]
+                # Create boolean mask first to ensure proper evaluation
+                mask = (self.filtered_df[column] >= min_val) & (self.filtered_df[column] <= max_val)
+                self.filtered_df = self.filtered_df[mask]
             elif min_val is not None:
-                self.filtered_df = self.filtered_df[self.filtered_df[column] >= min_val]
+                mask = self.filtered_df[column] >= min_val
+                self.filtered_df = self.filtered_df[mask]
             elif max_val is not None:
-                self.filtered_df = self.filtered_df[self.filtered_df[column] <= max_val]
+                mask = self.filtered_df[column] <= max_val
+                self.filtered_df = self.filtered_df[mask]
 
-            if self.filtered_df.empty:
+            # Check if filtered DataFrame is valid and not empty
+            if self.filtered_df is not None and len(self.filtered_df) == 0:
                 raise ValueError("No data points in the selected range")
 
             logging.info(f"Filter applied. Rows before: {len(self.original_df)}, after: {len(self.filtered_df)}")
@@ -351,7 +354,7 @@ class MainWindow(QMainWindow):
 
     def update_plot(self, update_filter=True):
 
-        if self.filtered_df is not None and not self.filtered_df.empty:
+        if self.filtered_df is not None and len(self.filtered_df) > 0:
             try:
 
                 x_column = self.left_panel.axis_selection.x_combo.currentText()
@@ -383,7 +386,7 @@ class MainWindow(QMainWindow):
             logging.warning("No data available to plot")
 
     def update_statistics(self):
-        if self.filtered_df is not None and not self.filtered_df.empty:
+        if self.filtered_df is not None and len(self.filtered_df) > 0:
             self.right_panel.statistics_area.update_stats(self.filtered_df)
         else:
             logging.warning("No filtered data available to update statistics")
