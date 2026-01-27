@@ -23,7 +23,7 @@ class StatisticsArea(QWidget):
             df_hash = hashlib.md5(pickle.dumps(df.values.tobytes())).hexdigest()
 
             # Check if we already computed stats for this exact dataframe
-            if df_hash == self._last_df_hash and self._stats_cache:
+            if df_hash == self._last_df_hash and self._last_df_hash is not None:
                 # Use cached statistics
                 return
 
