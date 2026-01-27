@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QHBoxLayout
-from PyQt5.QtCore import Qt
+
 
 
 class SheetSelectionDialog(QDialog):

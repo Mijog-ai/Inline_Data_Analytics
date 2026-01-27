@@ -1,12 +1,12 @@
 # left_panel.py
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit
+from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from gui.components.axis_selection import AxisSelection
 from gui.components.smoothing_options import SmoothingOptions
 from gui.components.data_filter import DataFilter
 from gui.components.curve_fitting import CurveFitting
 from gui.components.comment_box import CommentBox
-import logging
-from PyQt5.QtCore import pyqtSignal, QObject
+
+from PyQt5.QtCore import pyqtSignal
 
 class LeftPanel(QWidget):
     title_changed = pyqtSignal(str)

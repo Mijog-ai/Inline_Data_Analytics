@@ -1,6 +1,6 @@
 import traceback
 
-from PyQt5.QtWidgets import QGroupBox, QFormLayout, QComboBox, QListWidget, QPushButton, QMessageBox, QMainWindow
+from PyQt5.QtWidgets import QGroupBox, QFormLayout, QComboBox, QListWidget, QMainWindow
 import logging
 
 

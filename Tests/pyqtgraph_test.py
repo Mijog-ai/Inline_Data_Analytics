@@ -6,7 +6,8 @@ Each column gets its own Y-axis and color
 import sys
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtWidgets, QtCore
+from PyQt5.QtWidgets import QPushButton
+from pyqtgraph.Qt import QtWidgets
 from sklearn import datasets
 
 
@@ -15,6 +16,13 @@ class MultiAxisPlotWidget(QtWidgets.QWidget):
 
     def __init__(self):
         super().__init__()
+        self.active_label = None
+        self.x_max_input = None
+        self.x_min_input = None
+        self.column_dropdown = None
+        self.main_plot = None
+        self.graphics_view = None
+        self.plot_layout = None
         self.setWindowTitle('California Housing: Multiple Columns with Separate Y-Axes')
         self.resize(1200, 700)
 
@@ -65,7 +73,7 @@ class MultiAxisPlotWidget(QtWidgets.QWidget):
         self.setLayout(main_layout)
 
         # Control panel at the top
-        control_panel = self.create_control_panel()
+        control_panel = self.create_control_panel
         main_layout.addWidget(control_panel)
 
         # Create plot widget with ViewBox
@@ -87,6 +95,7 @@ class MultiAxisPlotWidget(QtWidgets.QWidget):
         # Set initial X-axis range
         self.main_plot.setXRange(self.x_min_default, self.x_max_default, padding=0)
 
+    @property
     def create_control_panel(self):
         """Create the control panel with input fields and column selector"""
         control_widget = QtWidgets.QWidget()
@@ -117,7 +126,7 @@ class MultiAxisPlotWidget(QtWidgets.QWidget):
         selector_layout.addWidget(self.column_dropdown)
 
         # Add to Plot button
-        add_button = QtWidgets.QPushButton("Add to Plot")
+        add_button: QPushButton = QPushButton("Add Column")
         add_button.setFixedWidth(100)
         add_button.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
         add_button.clicked.connect(self.add_column_to_plot)

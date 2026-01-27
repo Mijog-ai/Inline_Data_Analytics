@@ -10,10 +10,10 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QMessageBox,
     QLabel, QLineEdit, QPushButton, QToolBar, QAction, QGroupBox,
-    QComboBox, QFrame
+    QShortcut
 )
 from PyQt5.QtCore import Qt, QSize, QTimer
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QPixmap, QKeySequence
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore
@@ -84,7 +84,7 @@ class PlotArea(QWidget):
 
         # Color palette for different columns
         self.colors = [
-            (255, 100, 100),   # Red
+
             (100, 255, 100),   # Green
             (100, 100, 255),   # Blue
             (255, 255, 100),   # Yellow
@@ -95,6 +95,13 @@ class PlotArea(QWidget):
             (255, 200, 100),   # Light Orange
             (100, 255, 200),   # Aqua
         ]
+        # Undo/Redo
+
+        # Undo/Redo functionality
+        self.history_stack = []  # Stack of previous states
+        self.redo_stack = []  # Stack for redo operations
+        self.max_history = 50  # Maximum number of undo steps
+
 
     def setup_ui(self):
         """Setup the complete UI structure"""
@@ -119,6 +126,13 @@ class PlotArea(QWidget):
         self.layout.addWidget(self.legend_widget)
 
         self.setLayout(self.layout)
+
+        # Add keyboard shortcuts
+        self.undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
+        self.undo_shortcut.activated.connect(self.undo_last_action)
+
+        self.redo_shortcut = QShortcut(QKeySequence("Ctrl+Y"), self)
+        self.redo_shortcut.activated.connect(self.redo_last_action)
 
     def _create_title_controls(self):
         """Create title input and set button"""
@@ -228,6 +242,27 @@ class PlotArea(QWidget):
         )
         self.toolbar.addAction(self.clear_texts_action)
 
+        self.toolbar.addSeparator()
+        #Undo action
+        self.undo_action = self._create_action(
+            "Undo",
+            "Undo last action (Ctrl+Z)",
+            checkable= False,
+            callback = self.undo_last_action
+        )
+        self.undo_action.setEnabled(False)  # Disabled initially
+        self.toolbar.addAction(self.undo_action)
+
+        #Redo action
+        self.redo_action = self._create_action(
+            "Redo",
+            "Redo last action (Ctrl + Y)",
+            checkable = False,
+            callback = self.redo_last_action
+        )
+
+        self.redo_action.setEnabled(False)  # Disabled initially
+        self.toolbar.addAction(self.redo_action)
     def _create_action(self, text, tooltip, checkable=False, checked=False, callback=None):
         """Helper to create toolbar actions"""
         action = QAction(text, self)
@@ -356,9 +391,13 @@ class PlotArea(QWidget):
             QMessageBox.No
         )
 
+
+
         if reply == QMessageBox.Yes:
             for text_item in self.floating_text_items:
                 self.main_plot.removeItem(text_item['item'])
+
+            self._save_state()
 
             self.floating_text_items = []
             logging.info("Cleared all floating texts")
@@ -366,6 +405,7 @@ class PlotArea(QWidget):
 
     def _on_set_title(self):
         """Set the plot title from input"""
+        self._save_state()
         title = self.title_input.text()
         self.current_title = title
         self.main_plot.setTitle(title)
@@ -509,6 +549,7 @@ class PlotArea(QWidget):
 
     def _remove_nearest_highlight(self, x):
         """Remove the highlight closest to the given x position"""
+        self._save_state()
         if not self.vertical_lines:
             QMessageBox.information(
                 self, "No Highlights",
@@ -788,6 +829,7 @@ class PlotArea(QWidget):
 
     def update_x_axis_range(self):
         """Update the X-axis range based on input values"""
+        self._save_state()
         try:
             x_min = float(self.x_min_input.text())
             x_max = float(self.x_max_input.text())
@@ -866,6 +908,7 @@ class PlotArea(QWidget):
 
     def _add_highlight(self, x):
         """Add vertical line and create a legend box showing all axis values at x position"""
+        self._save_state()
         global nearest_y, nearest_x
         try:
             if not self.plot_items or len(self.plot_items) == 0:
@@ -974,6 +1017,7 @@ class PlotArea(QWidget):
 
     def _find_nearest_index(self, x_data, x_value):
         """Find nearest index using binary search"""
+        self._save_state()
         if len(x_data) == 0:
             return 0
 
@@ -994,6 +1038,7 @@ class PlotArea(QWidget):
 
     def _insert_floating_text_at(self, x, y):
         """Insert floating text box at position"""
+        self._save_state()
         try:
             text_item = pg.TextItem(
                 self.pending_text,
@@ -1003,15 +1048,36 @@ class PlotArea(QWidget):
                 fill=pg.mkBrush(255, 255, 0, 230)
             )
             text_item.setPos(x, y)
+
+            # Make the text item draggable
+            text_item.setFlag(text_item.GraphicsItemFlag.ItemIsMovable, True)
+            text_item.setFlag(text_item.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+            text_item.setFlag(text_item.GraphicsItemFlag.ItemIsSelectable, True)
+
             self.main_plot.addItem(text_item)
 
-            self.floating_text_items.append({
+            # Store reference with the text item
+            text_data = {
                 'item': text_item,
                 'text': self.pending_text,
                 'position': (x, y)
-            })
+            }
+            self.floating_text_items.append(text_data)
 
-            logging.info(f"Inserted floating text at ({x:.2f}, {y:.2f}): {self.pending_text}")
+            # Create a custom itemChange handler to track position changes
+            original_itemChange = text_item.itemChange
+
+            def custom_itemChange(change, value):
+                if change == text_item.GraphicsItemChange.ItemPositionHasChanged:
+                    # Update stored position when item is moved
+                    new_pos = text_item.pos()
+                    text_data['position'] = (new_pos.x(), new_pos.y())
+                    logging.debug(f"Text moved to ({new_pos.x():.2f}, {new_pos.y():.2f})")
+                return original_itemChange(change, value)
+
+            text_item.itemChange = custom_itemChange
+
+            logging.info(f"Inserted draggable floating text at ({x:.2f}, {y:.2f}): {self.pending_text}")
 
             # Exit insertion mode
             self.text_insertion_mode = False
@@ -1293,8 +1359,6 @@ class PlotArea(QWidget):
         Export the complete plot with all axes, annotations, and legend
         """
         from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtGui import QPixmap, QPainter
-        from PyQt5.QtCore import Qt
 
         try:
             # Temporarily hide cursor if active
@@ -1307,101 +1371,32 @@ class PlotArea(QWidget):
                 if self.crosshair_hline:
                     self.crosshair_hline.setVisible(False)
 
-            # Force update and render
+            # Force update
             QApplication.processEvents()
 
-            # Get dimensions from the actual scene content, not the widget's display size
-            # This ensures we capture the complete plot even if the widget is resized
-            scene_rect = self.graphics_view.sceneRect()
+            # Grab the graphics view
+            pixmap = self.graphics_view.grab()
 
-            # Save current view state so we can restore it later
-            current_view_range = self.main_plot.getViewBox().viewRange() if hasattr(self, 'main_plot') else None
-
-            if not scene_rect.isEmpty():
-                # Temporarily fit the view to show complete scene content
-                self.graphics_view.fitInView(scene_rect, Qt.KeepAspectRatio)
-                QApplication.processEvents()
-
-                # Use scene dimensions to capture complete content
-                widget_width = int(scene_rect.width())
-                widget_height = int(scene_rect.height())
-            else:
-                # Fallback to widget size if scene rect is not available
-                widget_width = self.graphics_view.width()
-                widget_height = self.graphics_view.height()
-
-            legend_height = self.legend_widget.height() if (include_legend and self.legend_widget.isVisible()) else 0
-
-            # Create high-resolution pixmap
-            scale_factor = 2
-
-            # Render graphics view to pixmap
-            plot_pixmap = QPixmap(int(widget_width * scale_factor), int(widget_height * scale_factor))
-            plot_pixmap.fill(Qt.white)
-
-            # Create painter for plot pixmap
-            plot_painter = QPainter(plot_pixmap)
-            plot_painter.scale(scale_factor, scale_factor)
-            self.graphics_view.render(plot_painter)
-            plot_painter.end()
-
-            # Create final image with legend
-            total_height = widget_height + legend_height
-            final_pixmap = QPixmap(int(widget_width * scale_factor), int(total_height * scale_factor))
-            final_pixmap.fill(Qt.white)
-
-            # Paint everything together
-            painter = QPainter(final_pixmap)
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setRenderHint(QPainter.SmoothPixmapTransform)
-
-            # Draw plot
-            painter.drawPixmap(0, 0, plot_pixmap)
-
-            # Draw legend if visible
+            # If legend is visible and should be included, grab both
             if include_legend and self.legend_widget.isVisible():
-                legend_pixmap = QPixmap(int(widget_width * scale_factor), int(legend_height * scale_factor))
-                legend_pixmap.fill(Qt.white)
+                legend_pixmap = self.legend_widget.grab()
 
-                legend_painter = QPainter(legend_pixmap)
-                legend_painter.scale(scale_factor, scale_factor)
-                self.legend_widget.render(legend_painter)
-                legend_painter.end()
+                # Combine plot and legend
+                from PyQt5.QtGui import QPainter
+                from PyQt5.QtCore import Qt
 
-                painter.drawPixmap(0, int(widget_height * scale_factor), legend_pixmap)
+                total_height = pixmap.height() + legend_pixmap.height()
+                combined_pixmap = QPixmap(pixmap.width(), total_height)
+                combined_pixmap.fill(Qt.white)
 
-            painter.end()
+                painter = QPainter(combined_pixmap)
+                painter.drawPixmap(0, 0, pixmap)
+                painter.drawPixmap(0, pixmap.height(), legend_pixmap)
+                painter.end()
 
-            # Save image
-            if file_name.endswith('.pdf'):
-                from PyQt5.QtPrintSupport import QPrinter
-
-                printer = QPrinter(QPrinter.HighResolution)
-                printer.setOutputFormat(QPrinter.PdfFormat)
-                printer.setOutputFileName(file_name)
-                printer.setPageSize(QPrinter.A4)
-                printer.setOrientation(QPrinter.Landscape)
-
-                pdf_painter = QPainter()
-                pdf_painter.begin(printer)
-
-                # Scale to fit
-                page_rect = printer.pageRect()
-                x_scale = page_rect.width() / float(final_pixmap.width())
-                y_scale = page_rect.height() / float(final_pixmap.height())
-                scale = min(x_scale, y_scale)
-
-                pdf_painter.scale(scale, scale)
-                pdf_painter.drawPixmap(0, 0, final_pixmap)
-                pdf_painter.end()
+                combined_pixmap.save(file_name, 'PNG')
             else:
-                # Save as PNG
-                final_pixmap.save(file_name, quality=100)
-
-            # Restore original view range
-            if current_view_range and hasattr(self, 'main_plot'):
-                self.main_plot.getViewBox().setRange(xRange=current_view_range[0], yRange=current_view_range[1], padding=0)
-                QApplication.processEvents()
+                pixmap.save(file_name, 'PNG')
 
             # Restore cursor visibility
             if cursor_was_visible:
@@ -1428,3 +1423,199 @@ class PlotArea(QWidget):
             self, "Text Insertion Mode",
             "Click anywhere on the plot to place the text.\nRight-click to cancel."
         )
+
+    def _save_state(self):
+        """Save current state to history stack"""
+        try:
+            state = {
+                'highlights': [(x, self._serialize_highlight_items(items))
+                               for x, items in self.vertical_lines],
+                'floating_texts': [
+                    {
+                        'text': item['text'],
+                        'position': item['position']
+                    }
+                    for item in self.floating_text_items
+                ],
+                'title': self.current_title,
+                'x_range': (float(self.x_min_input.text()),
+                            float(self.x_max_input.text()))
+            }
+
+            # Add to history
+            self.history_stack.append(state)
+
+            # Limit history size
+            if len(self.history_stack) > self.max_history:
+                self.history_stack.pop(0)
+
+            # Clear redo stack when new action is performed
+            self.redo_stack.clear()
+
+            # Update button states
+            self._update_undo_redo_buttons()
+
+        except Exception as e:
+            logging.error(f"Error saving state: {str(e)}")
+
+    def _serialize_highlight_items(self, items):
+        """Serialize highlight items for storage"""
+        # Store only the data needed to recreate highlights
+        serialized = []
+        for item in items:
+            if isinstance(item, pg.TextItem):
+                serialized.append({
+                    'type': 'text',
+                    'text': item.toPlainText(),
+                    'pos': item.pos()
+                })
+            elif isinstance(item, pg.InfiniteLine):
+                serialized.append({
+                    'type': 'vline',
+                    'pos': item.value()
+                })
+        return serialized
+
+    def _restore_state(self, state):
+        """Restore a saved state"""
+        try:
+            # Clear current highlights
+            for _, highlight_items in self.vertical_lines:
+                for item in highlight_items:
+                    try:
+                        if item in self.main_plot.items:
+                            self.main_plot.removeItem(item)
+                        else:
+                            for plot_item in self.plot_items:
+                                if hasattr(plot_item['viewbox'], 'addedItems'):
+                                    if item in plot_item['viewbox'].addedItems:
+                                        plot_item['viewbox'].removeItem(item)
+                                        break
+                    except:
+                        pass
+            self.vertical_lines = []
+
+            # Clear floating texts
+            for text_item in self.floating_text_items:
+                self.main_plot.removeItem(text_item['item'])
+            self.floating_text_items = []
+
+            # Restore highlights
+            for x, serialized_items in state['highlights']:
+                self._add_highlight(x)
+
+            # Restore floating texts
+            for text_data in state['floating_texts']:
+                text_item = pg.TextItem(
+                    text_data['text'],
+                    anchor=(0.5, 0.5),
+                    color='k',
+                    border=pg.mkPen('k', width=2),
+                    fill=pg.mkBrush(255, 255, 0, 230)
+                )
+                text_item.setPos(*text_data['position'])
+
+                # Make restored text items draggable too
+                text_item.setFlag(text_item.GraphicsItemFlag.ItemIsMovable, True)
+                text_item.setFlag(text_item.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+                text_item.setFlag(text_item.GraphicsItemFlag.ItemIsSelectable, True)
+
+                self.main_plot.addItem(text_item)
+                self.floating_text_items.append({
+                    'item': text_item,
+                    'text': text_data['text'],
+                    'position': text_data['position']
+                })
+
+            # Restore title
+            self.current_title = state['title']
+            self.title_input.setText(state['title'])
+            self.main_plot.setTitle(state['title'])
+
+            # Restore x-range
+            x_min, x_max = state['x_range']
+            self.x_min_input.setText(f"{x_min:.2f}")
+            self.x_max_input.setText(f"{x_max:.2f}")
+            self.main_plot.setXRange(x_min, x_max, padding=0)
+
+        except Exception as e:
+            logging.error(f"Error restoring state: {str(e)}")
+            QMessageBox.warning(self, "Restore Error",
+                                f"Could not fully restore state: {str(e)}")
+
+    def undo_last_action(self):
+        """Undo the last action"""
+        if not self.history_stack:
+            return
+
+        try:
+            # Save current state to redo stack
+            current_state = {
+                'highlights': [(x, self._serialize_highlight_items(items))
+                               for x, items in self.vertical_lines],
+                'floating_texts': [
+                    {
+                        'text': item['text'],
+                        'position': item['position']
+                    }
+                    for item in self.floating_text_items
+                ],
+                'title': self.current_title,
+                'x_range': (float(self.x_min_input.text()),
+                            float(self.x_max_input.text()))
+            }
+            self.redo_stack.append(current_state)
+
+            # Pop and restore previous state
+            previous_state = self.history_stack.pop()
+            self._restore_state(previous_state)
+
+            # Update button states
+            self._update_undo_redo_buttons()
+
+            logging.info("Undo performed")
+
+        except Exception as e:
+            logging.error(f"Error in undo: {str(e)}")
+            QMessageBox.warning(self, "Undo Error", f"Could not undo: {str(e)}")
+
+    def redo_last_action(self):
+        """Redo the last undone action"""
+        if not self.redo_stack:
+            return
+
+        try:
+            # Save current state to history stack
+            current_state = {
+                'highlights': [(x, self._serialize_highlight_items(items))
+                               for x, items in self.vertical_lines],
+                'floating_texts': [
+                    {
+                        'text': item['text'],
+                        'position': item['position']
+                    }
+                    for item in self.floating_text_items
+                ],
+                'title': self.current_title,
+                'x_range': (float(self.x_min_input.text()),
+                            float(self.x_max_input.text()))
+            }
+            self.history_stack.append(current_state)
+
+            # Pop and restore next state
+            next_state = self.redo_stack.pop()
+            self._restore_state(next_state)
+
+            # Update button states
+            self._update_undo_redo_buttons()
+
+            logging.info("Redo performed")
+
+        except Exception as e:
+            logging.error(f"Error in redo: {str(e)}")
+            QMessageBox.warning(self, "Redo Error", f"Could not redo: {str(e)}")
+
+    def _update_undo_redo_buttons(self):
+        """Update enabled state of undo/redo buttons"""
+        self.undo_action.setEnabled(len(self.history_stack) > 0)
+        self.redo_action.setEnabled(len(self.redo_stack) > 0)

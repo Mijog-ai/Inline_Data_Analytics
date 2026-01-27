@@ -47,14 +47,14 @@ a = Analysis(
         'unittest.mock',
         
         # Plotting
-        'matplotlib',
-        'matplotlib.pyplot',
-        'matplotlib.backends',
-        'matplotlib.backends.backend_qt5agg',
-        'matplotlib.figure',
-        'matplotlib.colors',
-        'mplcursors',
-        
+        #'matplotlib',
+#        'matplotlib.pyplot',
+#        'matplotlib.backends',
+#        'matplotlib.backends.backend_qt5agg',
+#        'matplotlib.figure',
+#        'matplotlib.colors',
+#        'mplcursors',
+
         # Excel support
         'openpyxl',
         'openpyxl.cell',
@@ -69,6 +69,9 @@ a = Analysis(
         'statsmodels',
         'statsmodels.nonparametric',
         'statsmodels.nonparametric.smoothers_lowess',
+
+        'pyqtgraph',
+        'pyqtgraph.Qt',
     ],
     hookspath=[],
     hooksconfig={},
@@ -92,7 +95,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Inline_Data_Analytics',
+    name='Inline_Data_Analytics_v2',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
