@@ -801,17 +801,24 @@ class PlotArea(QWidget):
         if last_item.get('plot_original'):
             last_item['viewbox'].removeItem(last_item['plot_original'])
 
-        # Remove axis and viewbox if not the first one
-        if len(self.plot_items) > 0:  # If this wasn't the first plot
-            self.plot_layout.removeItem(last_item['axis'])
-            self.main_plot.scene().removeItem(last_item['viewbox'])
-            if last_item['axis'] in self.y_axes:
-                self.y_axes.remove(last_item['axis'])
-        else:
-            # If removing the first/only plot, clear the label
-            self.main_plot.getAxis('left').setLabel('')
+        # Check if this is a curve fit (which reuses parent's axis/viewbox)
+        is_curve_fit = last_item.get('is_curve_fit', False)
 
-        self.axis_colors.pop()
+        if not is_curve_fit:
+            # Only remove axis/viewbox if this plot owns them (not a curve fit)
+            if last_item['axis'] in self.y_axes:
+                # This is a secondary axis that was added to the layout
+                self.plot_layout.removeItem(last_item['axis'])
+                self.main_plot.scene().removeItem(last_item['viewbox'])
+                self.y_axes.remove(last_item['axis'])
+            elif len(self.plot_items) == 0:
+                # If removing the last plot using the main axis, clear the label
+                self.main_plot.getAxis('left').setLabel('')
+
+            # Only pop axis_colors for non-curve-fit items
+            if self.axis_colors:
+                self.axis_colors.pop()
+
         logging.info(f"Removed column: {last_item['name']}")
 
     def _clear_all_plot_items(self):
