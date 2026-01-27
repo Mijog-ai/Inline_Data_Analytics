@@ -1145,20 +1145,41 @@ class PlotArea(QWidget):
                 return
 
             # Create curve fit line
-            fit_color = (255, 0, 0, 200)  # Red color for fit line
+            fit_color = (255, 0, 0)  # Red color for fit line
             fit_line = pg.PlotDataItem(
                 x=x_fit,
                 y=y_fit,
-                pen=pg.mkPen(fit_color, width=2, style=QtCore.Qt.DashLine),
+                pen=pg.mkPen((*fit_color, 200), width=2, style=QtCore.Qt.DashLine),
                 name=f"{y_label} - {fit_type} Fit"
             )
 
             # Add to the same ViewBox as the original data
             target_item['viewbox'].addItem(fit_line)
 
-            # Store the fit line reference
+            # Store the fit line reference in the original plot item
             target_item['fit_line'] = fit_line
             target_item['fit_equation'] = equation
+
+            # Create a new plot item for the fitted curve and add to plot_items
+            fit_plot_item = {
+                'name': f"{y_label} - {fit_type} Fit",
+                'plot_line': fit_line,
+                'plot_original': None,
+                'viewbox': target_item['viewbox'],
+                'axis': target_item['axis'],
+                'color': fit_color,
+                'x_data': x_fit,
+                'y_data': y_fit,
+                'y_data_original': y_fit,
+                'smoothing_applied': False,
+                'is_curve_fit': True,
+                'parent_column': y_label
+            }
+            self.plot_items.append(fit_plot_item)
+
+            # Update legend to include the fitted curve
+            if self.show_legend:
+                self._populate_legend()
 
             logging.info(f"Applied {fit_type} curve fitting to {y_label}: {equation}")
 
@@ -1171,20 +1192,41 @@ class PlotArea(QWidget):
         try:
             if y_label:
                 # Remove fit from specific plot
-                for item in self.plot_items:
+                for item in self.plot_items[:]:
                     if item['name'] == y_label and 'fit_line' in item:
                         item['viewbox'].removeItem(item['fit_line'])
                         del item['fit_line']
                         del item['fit_equation']
                         logging.info(f"Removed curve fit from {y_label}")
+
+                    # Remove the curve fit plot item from plot_items
+                    if item.get('is_curve_fit') and item.get('parent_column') == y_label:
+                        item['viewbox'].removeItem(item['plot_line'])
+                        self.plot_items.remove(item)
             else:
                 # Remove all curve fits
+                items_to_remove = []
                 for item in self.plot_items:
                     if 'fit_line' in item:
                         item['viewbox'].removeItem(item['fit_line'])
                         del item['fit_line']
                         del item['fit_equation']
+
+                    # Collect curve fit plot items to remove
+                    if item.get('is_curve_fit'):
+                        item['viewbox'].removeItem(item['plot_line'])
+                        items_to_remove.append(item)
+
+                # Remove collected items
+                for item in items_to_remove:
+                    self.plot_items.remove(item)
+
                 logging.info("Removed all curve fits")
+
+            # Update legend after removing curve fits
+            if self.show_legend:
+                self._populate_legend()
+
         except Exception as e:
             logging.error(f"Error removing curve fitting: {str(e)}")
 
