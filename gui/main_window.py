@@ -314,6 +314,14 @@ class MainWindow(QMainWindow):
 
             logging.info(f"Applying data filter: column={column}, min={min_val}, max={max_val}")
 
+            # Validate column is a string, not a DataFrame or Series
+            if not isinstance(column, str):
+                raise ValueError(f"Invalid column type: {type(column)}. Expected string.")
+
+            # Ensure column is not empty
+            if not column or not column.strip():
+                raise ValueError("Column name cannot be empty")
+
             if self.original_df is None or column not in self.original_df.columns:
                 raise ValueError(f"Column '{column}' not found in the dataframe")
 
@@ -345,10 +353,12 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Filter Applied", "Data filter applied successfully")
         except ValueError as e:
             logging.error(f"Error applying filter: {str(e)}")
+            logging.error(traceback.format_exc())
             QMessageBox.warning(self, "Filter Error", str(e))
             self.filtered_df = self.original_df.copy()
         except Exception as e:
             logging.error(f"Unexpected error applying filter: {str(e)}")
+            logging.error(traceback.format_exc())
             QMessageBox.critical(self, "Error", f"An unexpected error occurred: {str(e)}")
             self.filtered_df = self.original_df.copy()
 
@@ -367,10 +377,17 @@ class MainWindow(QMainWindow):
                     min_value = self.left_panel.data_filter.min_value.text()
                     max_value = self.left_panel.data_filter.max_value.text()
 
-                    if filter_column and (min_value or max_value):
-                        self.apply_data_filter(filter_column,
-                                               float(min_value) if min_value else None,
-                                               float(max_value) if max_value else None)
+                    # Ensure filter_column is a string to avoid DataFrame boolean evaluation
+                    # Check if filter values are provided before applying filter
+                    if isinstance(filter_column, str) and filter_column.strip():
+                        # Check if at least one value is provided and non-empty
+                        has_min = isinstance(min_value, str) and min_value.strip()
+                        has_max = isinstance(max_value, str) and max_value.strip()
+
+                        if has_min or has_max:
+                            self.apply_data_filter(filter_column,
+                                                   float(min_value) if has_min else None,
+                                                   float(max_value) if has_max else None)
 
                 self.right_panel.plot_area.plot_data(self.filtered_df, x_column, y_columns, smoothing_params,
                                                      limit_lines=[])
@@ -379,6 +396,7 @@ class MainWindow(QMainWindow):
 
             except Exception as e:
                 logging.error(f"Error updating plot: {str(e)}")
+                logging.error(traceback.format_exc())
                 QMessageBox.critical(self, "Error", f"Failed to update plot: {str(e)}")
 
 
