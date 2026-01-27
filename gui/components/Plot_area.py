@@ -1125,15 +1125,68 @@ class PlotArea(QWidget):
         if hasattr(self, 'last_plot_params'):
             self.plot_data(**self.last_plot_params)
 
-    # Compatibility methods for curve fitting (not implemented for scatter plots)
+    # Curve fitting methods
     def apply_curve_fitting(self, x_data, y_data, fit_func, equation, fit_type, x_label, y_label):
-        """Apply curve fitting - not implemented for scatter plots"""
-        QMessageBox.information(self, "Not Available",
-                               "Curve fitting is not available for multi-axis scatter plots.")
+        """Apply curve fitting to the plot"""
+        try:
+            # Generate fitted data points
+            x_fit = np.linspace(np.min(x_data), np.max(x_data), 500)
+            y_fit = fit_func(x_fit)
+
+            # Find the plot item for the y_label
+            target_item = None
+            for item in self.plot_items:
+                if item['name'] == y_label:
+                    target_item = item
+                    break
+
+            if target_item is None:
+                logging.warning(f"Could not find plot item for {y_label}")
+                return
+
+            # Create curve fit line
+            fit_color = (255, 0, 0, 200)  # Red color for fit line
+            fit_line = pg.PlotDataItem(
+                x=x_fit,
+                y=y_fit,
+                pen=pg.mkPen(fit_color, width=2, style=QtCore.Qt.DashLine),
+                name=f"{y_label} - {fit_type} Fit"
+            )
+
+            # Add to the same ViewBox as the original data
+            target_item['viewbox'].addItem(fit_line)
+
+            # Store the fit line reference
+            target_item['fit_line'] = fit_line
+            target_item['fit_equation'] = equation
+
+            logging.info(f"Applied {fit_type} curve fitting to {y_label}: {equation}")
+
+        except Exception as e:
+            logging.error(f"Error applying curve fitting: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to apply curve fitting: {str(e)}")
 
     def remove_curve_fitting(self, y_label=None):
-        """Remove curve fitting - not implemented for scatter plots"""
-        pass
+        """Remove curve fitting from specified plot or all plots"""
+        try:
+            if y_label:
+                # Remove fit from specific plot
+                for item in self.plot_items:
+                    if item['name'] == y_label and 'fit_line' in item:
+                        item['viewbox'].removeItem(item['fit_line'])
+                        del item['fit_line']
+                        del item['fit_equation']
+                        logging.info(f"Removed curve fit from {y_label}")
+            else:
+                # Remove all curve fits
+                for item in self.plot_items:
+                    if 'fit_line' in item:
+                        item['viewbox'].removeItem(item['fit_line'])
+                        del item['fit_line']
+                        del item['fit_equation']
+                logging.info("Removed all curve fits")
+        except Exception as e:
+            logging.error(f"Error removing curve fitting: {str(e)}")
 
     # Compatibility aliases
     def toggle_cursor(self, state):

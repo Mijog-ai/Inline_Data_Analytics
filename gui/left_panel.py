@@ -2,7 +2,6 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit
 from gui.components.axis_selection import AxisSelection
 from gui.components.smoothing_options import SmoothingOptions
-from gui.components.limit_lines import LimitLines
 from gui.components.data_filter import DataFilter
 from gui.components.curve_fitting import CurveFitting
 from gui.components.comment_box import CommentBox
@@ -21,7 +20,6 @@ class LeftPanel(QWidget):
         self.axis_selection = AxisSelection(self)
         # self.sampling_options = SamplingOptions(self)
         self.smoothing_options = SmoothingOptions(self)
-        self.limit_lines = LimitLines(self)
         self.data_filter = DataFilter(self)
         self.curve_fitting = CurveFitting(self)
         self.comment_box = CommentBox(self)
@@ -30,7 +28,6 @@ class LeftPanel(QWidget):
         # self.layout.addWidget(self.sampling_options)
         self.layout.addWidget(self.data_filter)
         self.layout.addWidget(self.smoothing_options)
-        self.layout.addWidget(self.limit_lines)
         self.layout.addWidget(self.curve_fitting)
         self.layout.addWidget(self.comment_box)
         self.layout.addStretch(1)
@@ -39,7 +36,6 @@ class LeftPanel(QWidget):
 
         # Initialize components as hidden
         self.smoothing_options.hide()
-        self.limit_lines.hide()
         self.comment_box.hide()
         self.data_filter.hide()
         self.curve_fitting.hide()
