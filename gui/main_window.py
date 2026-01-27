@@ -71,7 +71,6 @@ class MainWindow(QMainWindow):
         # Reset LeftPanel
         self.left_panel.axis_selection.update_options([])
         self.left_panel.smoothing_options.reset()
-        self.left_panel.limit_lines.clear_lines()
         self.left_panel.data_filter.reset()
         self.left_panel.curve_fitting.reset()
         self.left_panel.comment_box.clear()
@@ -152,10 +151,6 @@ class MainWindow(QMainWindow):
             logging.info("File loading cancelled by user")
 
     def setup_edit_actions(self):
-        self.show_limit_lines_action = (QAction
-                                        ("Show Limit Lines", self, checkable=True))
-        self.show_limit_lines_action.triggered.connect(self.toggle_limit_lines)
-
         self.show_smoothing_options_action = QAction('Smoothing_options', self, checkable=True)
         self.show_smoothing_options_action.triggered.connect(self.toggle_smoothing_options)
 
@@ -168,14 +163,10 @@ class MainWindow(QMainWindow):
         self.show_curve_fitting_action = QAction('Curve Fitting', self, checkable=True)
         self.show_curve_fitting_action.triggered.connect(self.toggle_curve_fitting)
 
-        self.menu_bar.add_edit_actions(self.show_limit_lines_action,
-                                       self.show_smoothing_options_action,
+        self.menu_bar.add_edit_actions(self.show_smoothing_options_action,
                                        self.show_comment_box_action,
                                        self.show_data_filter_action,
                                        self.show_curve_fitting_action)
-
-    def toggle_limit_lines(self, checked):
-        self.left_panel.limit_lines.setVisible(checked)
 
     def toggle_smoothing_options(self, checked):
         self.left_panel.smoothing_options.setVisible(checked)
@@ -361,10 +352,6 @@ class MainWindow(QMainWindow):
                 y_columns = [item.text() for item in self.left_panel.axis_selection.y_list.selectedItems()]
                 smoothing_params = self.left_panel.smoothing_options.get_params()
 
-                limit_lines = []
-                if hasattr(self.left_panel, 'limit_lines') and hasattr(self.left_panel.limit_lines, 'get_limit_lines'):
-                    limit_lines = self.left_panel.limit_lines.get_limit_lines()
-
                 # Apply data filter if needed
                 if update_filter:
                     filter_column = self.left_panel.data_filter.filter_column.currentText()
@@ -377,7 +364,7 @@ class MainWindow(QMainWindow):
                                                float(max_value) if max_value else None)
 
                 self.right_panel.plot_area.plot_data(self.filtered_df, x_column, y_columns, smoothing_params,
-                                                     limit_lines)
+                                                     limit_lines=[])
                 self.update_statistics()
                 self.unsaved_changes = True
 

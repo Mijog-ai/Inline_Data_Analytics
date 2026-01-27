@@ -30,7 +30,6 @@ class SessionManager:
                     'y_columns': [item.text() for item in
                                   self.main_window.left_panel.axis_selection.y_list.selectedItems()],
                     'smoothing_params': self.main_window.left_panel.smoothing_options.get_params(),
-                    'limit_lines': self.main_window.left_panel.limit_lines.get_limit_lines(),
                     'fit_type': self.main_window.left_panel.curve_fitting.fit_type.currentText(),
                     'comments': self.main_window.left_panel.comment_box.get_comments(),
                     'data_filter': {
@@ -91,7 +90,6 @@ class SessionManager:
                         items[0].setSelected(True)
 
                 self.main_window.left_panel.smoothing_options.set_params(session_data['smoothing_params'])
-                self.main_window.left_panel.limit_lines.set_limit_lines(session_data['limit_lines'])
                 self.main_window.left_panel.curve_fitting.fit_type.setCurrentText(session_data['fit_type'])
                 self.main_window.left_panel.comment_box.set_comments(session_data['comments'])
 
