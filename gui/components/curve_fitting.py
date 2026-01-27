@@ -15,7 +15,7 @@ class CurveFitting(QGroupBox):
 
     def setup_ui(self):
         self.fit_type = QComboBox()
-        self.fit_type.addItems(['Linear', 'Quadratic', 'Exponential'])
+        self.fit_type.addItems(['Linear', 'Quadratic', 'Cubic', 'Quartic', 'Quintic', 'Exponential'])
         self.layout.addRow("Fit Type:", self.fit_type)
 
         self.apply_fit_button = QPushButton("Apply Fit")
@@ -68,6 +68,21 @@ class CurveFitting(QGroupBox):
                 fit_func = lambda x: self.quadratic_func(x, *popt)
                 equation = f"y = {popt[0]:.4f}x^2 + {popt[1]:.4f}x + {popt[2]:.4f}"
                 r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
+            elif fit_type == 'Cubic':
+                popt, _ = curve_fit(self.cubic_func, x_data, y_data)
+                fit_func = lambda x: self.cubic_func(x, *popt)
+                equation = f"y = {popt[0]:.4f}x^3 + {popt[1]:.4f}x^2 + {popt[2]:.4f}x + {popt[3]:.4f}"
+                r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
+            elif fit_type == 'Quartic':
+                popt, _ = curve_fit(self.quartic_func, x_data, y_data)
+                fit_func = lambda x: self.quartic_func(x, *popt)
+                equation = f"y = {popt[0]:.4f}x^4 + {popt[1]:.4f}x^3 + {popt[2]:.4f}x^2 + {popt[3]:.4f}x + {popt[4]:.4f}"
+                r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
+            elif fit_type == 'Quintic':
+                popt, _ = curve_fit(self.quintic_func, x_data, y_data)
+                fit_func = lambda x: self.quintic_func(x, *popt)
+                equation = f"y = {popt[0]:.4f}x^5 + {popt[1]:.4f}x^4 + {popt[2]:.4f}x^3 + {popt[3]:.4f}x^2 + {popt[4]:.4f}x + {popt[5]:.4f}"
+                r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
             elif fit_type == 'Exponential':
                 popt, _ = curve_fit(self.exponential_func, x_data, y_data, p0=[1, 0.1])
                 fit_func = lambda x: self.exponential_func(x, *popt)
@@ -89,6 +104,18 @@ class CurveFitting(QGroupBox):
     @staticmethod
     def quadratic_func(x, a, b, c):
         return a * x ** 2 + b * x + c
+
+    @staticmethod
+    def cubic_func(x, a, b, c, d):
+        return a * x ** 3 + b * x ** 2 + c * x + d
+
+    @staticmethod
+    def quartic_func(x, a, b, c, d, e):
+        return a * x ** 4 + b * x ** 3 + c * x ** 2 + d * x + e
+
+    @staticmethod
+    def quintic_func(x, a, b, c, d, e, f):
+        return a * x ** 5 + b * x ** 4 + c * x ** 3 + d * x ** 2 + e * x + f
 
     @staticmethod
     def exponential_func(x, a, b):
