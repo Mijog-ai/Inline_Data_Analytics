@@ -319,9 +319,15 @@ class MainWindow(QMainWindow):
 
             self.filtered_df = self.original_df.copy()
 
-            if min_val is not None:
+            # Apply filter using proper boolean mask combination to avoid DataFrame ambiguity
+            if min_val is not None and max_val is not None:
+                # Combine both conditions with & operator
+                self.filtered_df = self.filtered_df[
+                    (self.filtered_df[column] >= min_val) & (self.filtered_df[column] <= max_val)
+                ]
+            elif min_val is not None:
                 self.filtered_df = self.filtered_df[self.filtered_df[column] >= min_val]
-            if max_val is not None:
+            elif max_val is not None:
                 self.filtered_df = self.filtered_df[self.filtered_df[column] <= max_val]
 
             if self.filtered_df.empty:
