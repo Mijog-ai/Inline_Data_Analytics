@@ -15,7 +15,10 @@ class CurveFitting(QGroupBox):
 
     def setup_ui(self):
         self.fit_type = QComboBox()
-        self.fit_type.addItems(['Linear', 'Quadratic', 'Cubic', 'Quartic', 'Quintic', 'Exponential'])
+        # Add polynomial degrees 1-9 and exponential
+        polynomial_options = [f'Polynomial (Degree {i})' for i in range(1, 10)]
+        polynomial_options.append('Exponential')
+        self.fit_type.addItems(polynomial_options)
         self.layout.addRow("Fit Type:", self.fit_type)
 
         self.apply_fit_button = QPushButton("Apply Fit")
@@ -62,31 +65,21 @@ class CurveFitting(QGroupBox):
 
             fit_type = self.fit_type.currentText()
 
-            if fit_type == 'Linear':
-                slope, intercept, r_value, p_value, std_err = stats.linregress(x_data, y_data)
-                fit_func = lambda x: slope * x + intercept
-                equation = f"y = {slope:.4f}x + {intercept:.4f}"
-                r_squared = r_value ** 2
-            elif fit_type == 'Quadratic':
-                popt, _ = curve_fit(self.quadratic_func, x_data, y_data)
-                fit_func = lambda x: self.quadratic_func(x, *popt)
-                equation = f"y = {popt[0]:.4f}x^2 + {popt[1]:.4f}x + {popt[2]:.4f}"
+            if fit_type.startswith('Polynomial'):
+                # Extract degree from string like "Polynomial (Degree 3)"
+                degree = int(fit_type.split('Degree ')[1].rstrip(')'))
+
+                # Create polynomial function for the given degree
+                poly_func = self.create_polynomial_func(degree)
+
+                # Fit the polynomial
+                popt, _ = curve_fit(poly_func, x_data, y_data)
+                fit_func = lambda x: poly_func(x, *popt)
+
+                # Generate equation string
+                equation = self.generate_polynomial_equation(degree, popt)
                 r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
-            elif fit_type == 'Cubic':
-                popt, _ = curve_fit(self.cubic_func, x_data, y_data)
-                fit_func = lambda x: self.cubic_func(x, *popt)
-                equation = f"y = {popt[0]:.4f}x^3 + {popt[1]:.4f}x^2 + {popt[2]:.4f}x + {popt[3]:.4f}"
-                r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
-            elif fit_type == 'Quartic':
-                popt, _ = curve_fit(self.quartic_func, x_data, y_data)
-                fit_func = lambda x: self.quartic_func(x, *popt)
-                equation = f"y = {popt[0]:.4f}x^4 + {popt[1]:.4f}x^3 + {popt[2]:.4f}x^2 + {popt[3]:.4f}x + {popt[4]:.4f}"
-                r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
-            elif fit_type == 'Quintic':
-                popt, _ = curve_fit(self.quintic_func, x_data, y_data)
-                fit_func = lambda x: self.quintic_func(x, *popt)
-                equation = f"y = {popt[0]:.4f}x^5 + {popt[1]:.4f}x^4 + {popt[2]:.4f}x^3 + {popt[3]:.4f}x^2 + {popt[4]:.4f}x + {popt[5]:.4f}"
-                r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
+
             elif fit_type == 'Exponential':
                 popt, _ = curve_fit(self.exponential_func, x_data, y_data, p0=[1, 0.1])
                 fit_func = lambda x: self.exponential_func(x, *popt)
@@ -121,20 +114,59 @@ class CurveFitting(QGroupBox):
             QMessageBox.warning(self, "Remove Fit Error", f"Error removing fit: {str(e)}")
 
     @staticmethod
-    def quadratic_func(x, a, b, c):
-        return a * x ** 2 + b * x + c
+    def create_polynomial_func(degree):
+        """
+        Create a polynomial function of given degree.
+
+        Parameters:
+        -----------
+        degree : int
+            Degree of the polynomial (1-9)
+
+        Returns:
+        --------
+        function : A function that computes the polynomial
+        """
+        def polynomial(x, *coeffs):
+            """
+            Compute polynomial with given coefficients.
+            coeffs[0] * x^degree + coeffs[1] * x^(degree-1) + ... + coeffs[degree]
+            """
+            result = np.zeros_like(x, dtype=float)
+            for i, coeff in enumerate(coeffs):
+                power = degree - i
+                result += coeff * (x ** power)
+            return result
+        return polynomial
 
     @staticmethod
-    def cubic_func(x, a, b, c, d):
-        return a * x ** 3 + b * x ** 2 + c * x + d
+    def generate_polynomial_equation(degree, coefficients):
+        """
+        Generate a human-readable polynomial equation string.
 
-    @staticmethod
-    def quartic_func(x, a, b, c, d, e):
-        return a * x ** 4 + b * x ** 3 + c * x ** 2 + d * x + e
+        Parameters:
+        -----------
+        degree : int
+            Degree of the polynomial
+        coefficients : array-like
+            Coefficients of the polynomial (highest degree first)
 
-    @staticmethod
-    def quintic_func(x, a, b, c, d, e, f):
-        return a * x ** 5 + b * x ** 4 + c * x ** 3 + d * x ** 2 + e * x + f
+        Returns:
+        --------
+        str : Equation string
+        """
+        terms = []
+        for i, coeff in enumerate(coefficients):
+            power = degree - i
+            if power == 0:
+                terms.append(f"{coeff:.4f}")
+            elif power == 1:
+                terms.append(f"{coeff:.4f}x")
+            else:
+                terms.append(f"{coeff:.4f}x^{power}")
+
+        equation = "y = " + " + ".join(terms)
+        return equation
 
     @staticmethod
     def exponential_func(x, a, b):
