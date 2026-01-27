@@ -22,6 +22,10 @@ class CurveFitting(QGroupBox):
         self.apply_fit_button.clicked.connect(self.apply_fit)
         self.layout.addRow(self.apply_fit_button)
 
+        self.remove_fit_button = QPushButton("Remove Fit")
+        self.remove_fit_button.clicked.connect(self.remove_fit)
+        self.layout.addRow(self.remove_fit_button)
+
         self.setLayout(self.layout)
 
     def apply_fit(self):
@@ -100,6 +104,21 @@ class CurveFitting(QGroupBox):
         except Exception as e:
             logging.exception(f"Error during curve fitting: {str(e)}")
             QMessageBox.warning(self, "Fit Error", f"Error applying fit: {str(e)}")
+
+    def remove_fit(self):
+        """Remove all curve fits from the plot"""
+        logging.info("Removing curve fits")
+        main_window = self.window()
+
+        try:
+            # Call the plot area's remove_curve_fitting method
+            main_window.right_panel.plot_area.remove_curve_fitting()
+
+            QMessageBox.information(self, "Fit Removed", "All curve fits have been removed from the plot.")
+
+        except Exception as e:
+            logging.exception(f"Error removing curve fit: {str(e)}")
+            QMessageBox.warning(self, "Remove Fit Error", f"Error removing fit: {str(e)}")
 
     @staticmethod
     def quadratic_func(x, a, b, c):
