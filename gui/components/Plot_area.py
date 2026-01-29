@@ -624,8 +624,36 @@ class PlotArea(QWidget):
             self.x_data = df[x_column].values
 
             # Calculate default axis ranges for X
-            x_min_default = float(np.min(self.x_data))
-            x_max_default = float(np.max(self.x_data))
+            # Check if data is valid before calculating min/max
+            if len(self.x_data) == 0 or np.all(np.isnan(self.x_data)):
+                logging.error(f"No valid data in column '{x_column}'")
+                QMessageBox.critical(
+                    self, "Error",
+                    f"No valid data found in column '{x_column}'. Please check your data file."
+                )
+                return
+
+            # Filter out NaN values for min/max calculation
+            valid_x_data = self.x_data[~np.isnan(self.x_data)]
+            if len(valid_x_data) == 0:
+                logging.error(f"All data in column '{x_column}' is NaN")
+                QMessageBox.critical(
+                    self, "Error",
+                    f"All data in column '{x_column}' contains invalid (NaN) values. Please check your data file."
+                )
+                return
+
+            x_min_default = float(np.min(valid_x_data))
+            x_max_default = float(np.max(valid_x_data))
+
+            # Additional check: ensure min and max are valid numbers
+            if np.isnan(x_min_default) or np.isnan(x_max_default) or np.isinf(x_min_default) or np.isinf(x_max_default):
+                logging.error(f"Invalid range calculated for column '{x_column}': [{x_min_default}, {x_max_default}]")
+                QMessageBox.critical(
+                    self, "Error",
+                    f"Could not calculate valid range for column '{x_column}'. Please check your data file."
+                )
+                return
 
             self.x_min_default = x_min_default
             self.x_max_default = x_max_default
@@ -682,6 +710,24 @@ class PlotArea(QWidget):
         # Get Y data from DataFrame
         y_data_original = self.current_df[column_name].values
         y_data = y_data_original.copy()
+
+        # Validate Y data
+        if len(y_data) == 0:
+            logging.warning(f"No data in column '{column_name}', skipping")
+            QMessageBox.warning(
+                self, "Warning",
+                f"Column '{column_name}' contains no data and will be skipped."
+            )
+            return
+
+        # Check if all values are NaN
+        if np.all(np.isnan(y_data)):
+            logging.warning(f"All data in column '{column_name}' is NaN, skipping")
+            QMessageBox.warning(
+                self, "Warning",
+                f"Column '{column_name}' contains only invalid (NaN) values and will be skipped."
+            )
+            return
 
         # Track if smoothing was applied
         smoothing_applied = False
