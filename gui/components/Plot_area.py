@@ -85,12 +85,13 @@ class PlotArea(QWidget):
         # Color palette for different columns
         self.colors = [
 
-            (100, 255, 100),   # Green
+            (79, 121, 66),   # Green
             (100, 100, 255),   # Blue
+            (255, 150, 100),  # Orange
             (255, 255, 100),   # Yellow
             (255, 100, 255),   # Magenta
             (100, 255, 255),   # Cyan
-            (255, 150, 100),   # Orange
+
             (150, 100, 255),   # Purple
             (255, 200, 100),   # Light Orange
             (100, 255, 200),   # Aqua
