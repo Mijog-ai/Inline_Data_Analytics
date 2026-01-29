@@ -10,7 +10,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QMessageBox,
     QLabel, QLineEdit, QPushButton, QToolBar, QAction, QGroupBox,
-    QShortcut
+    QShortcut, QInputDialog, QMenu
 )
 from PyQt5.QtCore import Qt, QSize, QTimer
 from PyQt5.QtGui import QFont, QPixmap, QKeySequence
@@ -19,6 +19,37 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore
 
 from utils.asc_utils import apply_smoothing
+
+
+class EditableTextItem(pg.TextItem):
+    """Custom TextItem that supports editing and deletion via context menu"""
+
+    def __init__(self, text='', parent_plot_area=None, **kwargs):
+        super().__init__(text, **kwargs)
+        self.parent_plot_area = parent_plot_area
+        self.text_data = None  # Reference to the text data dict
+
+    def mouseDoubleClickEvent(self, event):
+        """Handle double-click to edit text"""
+        if self.parent_plot_area:
+            self.parent_plot_area._edit_text_item(self)
+        event.accept()
+
+    def contextMenuEvent(self, event):
+        """Handle right-click to show context menu"""
+        if self.parent_plot_area:
+            menu = QMenu()
+            edit_action = menu.addAction("Edit Text")
+            remove_action = menu.addAction("Remove Text")
+
+            action = menu.exec_(event.screenPos().toPoint())
+
+            if action == edit_action:
+                self.parent_plot_area._edit_text_item(self)
+            elif action == remove_action:
+                self.parent_plot_area._remove_text_item(self)
+
+        event.accept()
 
 
 class PlotArea(QWidget):
@@ -1093,8 +1124,9 @@ class PlotArea(QWidget):
         """Insert floating text box at position"""
         self._save_state()
         try:
-            text_item = pg.TextItem(
+            text_item = EditableTextItem(
                 self.pending_text,
+                parent_plot_area=self,
                 anchor=(0.5, 0.5),
                 color='k',
                 border=pg.mkPen('k', width=2),
@@ -1116,6 +1148,9 @@ class PlotArea(QWidget):
                 'position': (x, y)
             }
             self.floating_text_items.append(text_data)
+
+            # Link text_item to its data for editing/removal
+            text_item.text_data = text_data
 
             # Create a custom itemChange handler to track position changes
             original_itemChange = text_item.itemChange
@@ -1147,6 +1182,48 @@ class PlotArea(QWidget):
         self.pending_text = ""
         self.insert_text_action.setChecked(False)
         logging.info("Text insertion mode cancelled")
+
+    def _edit_text_item(self, text_item):
+        """Edit an existing text item"""
+        try:
+            current_text = text_item.toPlainText()
+            new_text, ok = QInputDialog.getText(
+                self,
+                "Edit Text",
+                "Enter new text:",
+                QLineEdit.Normal,
+                current_text
+            )
+
+            if ok and new_text:
+                self._save_state()
+                text_item.setText(new_text)
+                # Update the stored text in text_data
+                if text_item.text_data:
+                    text_item.text_data['text'] = new_text
+                logging.info(f"Edited text from '{current_text}' to '{new_text}'")
+
+        except Exception as e:
+            logging.error(f"Error editing text item: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to edit text: {str(e)}")
+
+    def _remove_text_item(self, text_item):
+        """Remove a specific text item"""
+        try:
+            self._save_state()
+
+            # Remove from plot
+            self.main_plot.removeItem(text_item)
+
+            # Remove from floating_text_items list
+            if text_item.text_data in self.floating_text_items:
+                self.floating_text_items.remove(text_item.text_data)
+
+            logging.info(f"Removed text item: {text_item.toPlainText()}")
+
+        except Exception as e:
+            logging.error(f"Error removing text item: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to remove text: {str(e)}")
 
     # ========================================================================
     # UTILITY METHODS
