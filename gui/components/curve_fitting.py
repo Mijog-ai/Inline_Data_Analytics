@@ -273,120 +273,95 @@ class CurveFitting(QGroupBox):
             if not y_items:
                 raise ValueError("No Y-axis selected")
 
-            # Get all selected Y columns
-            y_columns = [item.text() for item in y_items]
+            y_column = y_items[0].text()
 
-            logging.info(f"Selected columns - X: {x_column}, Y columns: {y_columns}")
+            logging.info(f"Selected columns - X: {x_column}, Y: {y_column}")
+
+            # Get data
+            x_data = main_window.filtered_df[x_column].values
+            y_data = main_window.filtered_df[y_column].values
+
+            # Remove any NaN or infinite values
+            mask = np.isfinite(x_data) & np.isfinite(y_data)
+            x_data = x_data[mask]
+            y_data = y_data[mask]
+
+            if len(x_data) == 0 or len(y_data) == 0:
+                raise ValueError("No valid data points for fitting after removing NaN/inf values")
 
             fit_type = self.fit_type.currentText()
-            degree = self.degree_spinbox.value() if fit_type == 'Polynomial' else None
 
-            # Warning for high-degree polynomials (only ask once for all columns)
-            if fit_type == 'Polynomial' and degree > 9:
-                reply = QMessageBox.question(
-                    self,
-                    "High Degree Warning",
-                    f"Degree {degree} polynomial may cause overfitting and numerical instability.\n\n"
-                    f"This can result in:\n"
-                    f"• Wild oscillations in the fitted curve\n"
-                    f"• Unreliable predictions\n"
-                    f"• Extreme coefficient values\n\n"
-                    f"Consider using a lower degree (1-9) for more stable results.\n\n"
-                    f"This will be applied to all {len(y_columns)} selected Y column(s).\n\n"
-                    f"Continue anyway?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
-                )
-                if reply == QMessageBox.No:
-                    logging.info(f"User cancelled degree {degree} polynomial fit")
-                    return
+            if fit_type == 'Polynomial':
+                degree = self.degree_spinbox.value()
 
-            # Process each Y column
-            fit_results = []
-            failed_fits = []
+                # Check if we have enough data points
+                if len(x_data) <= degree:
+                    raise ValueError(f"Not enough data points for degree {degree} polynomial. "
+                                     f"Need at least {degree + 1} points, but only have {len(x_data)} points.")
 
-            for y_column in y_columns:
-                try:
-                    # Get data for this Y column
-                    x_data = main_window.filtered_df[x_column].values
-                    y_data = main_window.filtered_df[y_column].values
-
-                    # Remove any NaN or infinite values
-                    mask = np.isfinite(x_data) & np.isfinite(y_data)
-                    x_data_clean = x_data[mask]
-                    y_data_clean = y_data[mask]
-
-                    if len(x_data_clean) == 0 or len(y_data_clean) == 0:
-                        raise ValueError("No valid data points after removing NaN/inf values")
-
-                    if fit_type == 'Polynomial':
-                        # Check if we have enough data points
-                        if len(x_data_clean) <= degree:
-                            raise ValueError(f"Not enough data points for degree {degree} polynomial. "
-                                             f"Need at least {degree + 1} points, but only have {len(x_data_clean)} points.")
-
-                        # Fit polynomial using numpy
-                        try:
-                            coeffs = np.polyfit(x_data_clean, y_data_clean, degree)
-                            fit_func = np.poly1d(coeffs)
-                        except np.RankWarning:
-                            logging.warning(f"Polynomial fit may be poorly conditioned for degree {degree} on {y_column}")
-                            coeffs = np.polyfit(x_data_clean, y_data_clean, degree)
-                            fit_func = np.poly1d(coeffs)
-
-                        # Generate equation string
-                        equation = self.generate_polynomial_equation(coeffs, degree)
-
-                        # Calculate R-squared
-                        y_pred = fit_func(x_data_clean)
-                        r_squared = self.calculate_r_squared(y_data_clean, y_pred)
-
-                        fit_type_name = f"Polynomial (degree {degree})"
-
-                    elif fit_type == 'Exponential':
-                        try:
-                            popt, _ = curve_fit(self.exponential_func, x_data_clean, y_data_clean, p0=[1, 0.1])
-                            fit_func = lambda x, popt=popt: self.exponential_func(x, *popt)
-                            equation = f"y = {popt[0]:.4f} * e^({popt[1]:.4f}x)"
-                            r_squared = self.calculate_r_squared(y_data_clean, fit_func(x_data_clean))
-                            fit_type_name = "Exponential"
-                        except RuntimeError as e:
-                            raise ValueError(f"Exponential fit failed. The data may not follow an exponential pattern. Error: {str(e)}")
-
-                    logging.info(f"{fit_type_name} fit successful for {y_column}. Equation: {equation}, R²: {r_squared:.4f}")
-
-                    # Plot the results
-                    main_window.right_panel.plot_area.apply_curve_fitting(
-                        x_data_clean, y_data_clean, fit_func, equation, fit_type_name, x_column, y_column
+                # Warning for high-degree polynomials
+                if degree > 9:
+                    reply = QMessageBox.question(
+                        self,
+                        "High Degree Warning",
+                        f"Degree {degree} polynomial may cause overfitting and numerical instability.\n\n"
+                        f"This can result in:\n"
+                        f"• Wild oscillations in the fitted curve\n"
+                        f"• Unreliable predictions\n"
+                        f"• Extreme coefficient values\n\n"
+                        f"Consider using a lower degree (1-9) for more stable results.\n\n"
+                        f"Continue anyway?",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.No
                     )
+                    if reply == QMessageBox.No:
+                        logging.info(f"User cancelled degree {degree} polynomial fit")
+                        return
 
-                    fit_results.append({
-                        'column': y_column,
-                        'equation': equation,
-                        'r_squared': r_squared
-                    })
+                # Fit polynomial using numpy
+                try:
+                    coeffs = np.polyfit(x_data, y_data, degree)
+                    fit_func = np.poly1d(coeffs)
+                except np.RankWarning:
+                    logging.warning(f"Polynomial fit may be poorly conditioned for degree {degree}")
+                    QMessageBox.warning(
+                        self,
+                        "Fitting Warning",
+                        f"The polynomial fit for degree {degree} may be poorly conditioned.\n"
+                        f"Results might be unreliable. Consider using a lower degree."
+                    )
+                    coeffs = np.polyfit(x_data, y_data, degree)
+                    fit_func = np.poly1d(coeffs)
 
-                except Exception as e:
-                    logging.error(f"Error fitting {y_column}: {str(e)}")
-                    failed_fits.append({'column': y_column, 'error': str(e)})
+                # Generate equation string
+                equation = self.generate_polynomial_equation(coeffs, degree)
 
-            # Show summary message
-            if fit_results:
-                summary = f"Successfully applied {fit_type_name} fit to {len(fit_results)} column(s):\n\n"
-                for result in fit_results:
-                    summary += f"{result['column']}:\n{result['equation']}\nR² = {result['r_squared']:.4f}\n\n"
+                # Calculate R-squared
+                y_pred = fit_func(x_data)
+                r_squared = self.calculate_r_squared(y_data, y_pred)
 
-                if failed_fits:
-                    summary += f"\nFailed to fit {len(failed_fits)} column(s):\n"
-                    for failed in failed_fits:
-                        summary += f"• {failed['column']}: {failed['error']}\n"
+                fit_type_name = f"Polynomial (degree {degree})"
 
-                QMessageBox.information(self, "Fit Applied", summary)
-            else:
-                error_summary = "Failed to apply fit to all columns:\n\n"
-                for failed in failed_fits:
-                    error_summary += f"• {failed['column']}: {failed['error']}\n"
-                QMessageBox.warning(self, "Fit Error", error_summary)
+            elif fit_type == 'Exponential':
+                try:
+                    popt, _ = curve_fit(self.exponential_func, x_data, y_data, p0=[1, 0.1])
+                    fit_func = lambda x: self.exponential_func(x, *popt)
+                    equation = f"y = {popt[0]:.4f} * e^({popt[1]:.4f}x)"
+                    r_squared = self.calculate_r_squared(y_data, fit_func(x_data))
+                    fit_type_name = "Exponential"
+                except RuntimeError as e:
+                    raise ValueError(
+                        f"Exponential fit failed. The data may not follow an exponential pattern. Error: {str(e)}")
+
+            logging.info(f"{fit_type_name} fit successful. Equation: {equation}, R²: {r_squared:.4f}")
+
+            # Plot the results
+            main_window.right_panel.plot_area.apply_curve_fitting(
+                x_data, y_data, fit_func, equation, fit_type_name, x_column, y_column
+            )
+
+            QMessageBox.information(self, "Fit Applied",
+                                    f"Applied {fit_type_name} fit:\n\n{equation}\n\nR-squared: {r_squared:.4f}")
 
         except Exception as e:
             logging.exception(f"Error during curve fitting: {str(e)}")

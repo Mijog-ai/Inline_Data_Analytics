@@ -95,7 +95,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Inline_Data_Analytics_v3',
+    name='Inline_Data_Analytics_v3.1',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

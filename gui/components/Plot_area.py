@@ -35,21 +35,15 @@ class EditableTextItem(pg.TextItem):
             self.parent_plot_area._edit_text_item(self)
         event.accept()
 
-    def contextMenuEvent(self, event):
-        """Handle right-click to show context menu"""
-        if self.parent_plot_area:
-            menu = QMenu()
-            edit_action = menu.addAction("Edit Text")
-            remove_action = menu.addAction("Remove Text")
-
-            action = menu.exec_(event.screenPos().toPoint())
-
-            if action == edit_action:
-                self.parent_plot_area._edit_text_item(self)
-            elif action == remove_action:
+    def mousePressEvent(self, event):
+        """Handle right-click to remove text directly"""
+        if event.button() == QtCore.Qt.RightButton:
+            if self.parent_plot_area:
                 self.parent_plot_area._remove_text_item(self)
-
-        event.accept()
+            event.accept()
+        else:
+            # Call parent implementation for other buttons (like left-click for dragging)
+            super().mousePressEvent(event)
 
 
 class PlotArea(QWidget):
@@ -1637,8 +1631,9 @@ class PlotArea(QWidget):
 
             # Restore floating texts
             for text_data in state['floating_texts']:
-                text_item = pg.TextItem(
+                text_item = EditableTextItem(
                     text_data['text'],
+                    parent_plot_area=self,
                     anchor=(0.5, 0.5),
                     color='k',
                     border=pg.mkPen('k', width=2),
@@ -1652,11 +1647,17 @@ class PlotArea(QWidget):
                 text_item.setFlag(text_item.GraphicsItemFlag.ItemIsSelectable, True)
 
                 self.main_plot.addItem(text_item)
-                self.floating_text_items.append({
+
+                # Store reference with the text item
+                stored_data = {
                     'item': text_item,
                     'text': text_data['text'],
                     'position': text_data['position']
-                })
+                }
+                self.floating_text_items.append(stored_data)
+
+                # Link text_item to its data for editing/removal
+                text_item.text_data = stored_data
 
             # Restore title
             self.current_title = state['title']
