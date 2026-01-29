@@ -407,7 +407,7 @@ class CurveFitting(QGroupBox):
                 continue
 
             # Format the coefficient
-            coeff_str = f"{coeff:.4f}"
+            coeff_str = f"{coeff:.10f}"
 
             # Build term based on power
             if power == 0:
