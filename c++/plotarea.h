@@ -78,15 +78,19 @@ public:
     void editTextItem(EditableTextItem* item);
     void removeTextItem(EditableTextItem* item);
 
-    // Partitioning (vertical divider lines) + upstream/downstream branch.
+    // Partitioning (vertical + horizontal divider lines) + upstream/downstream branch.
     void clearPartitions();
     void setBranchAvailable(bool loop);
     QVector<double> partitionXs() const { return partitionDividers; }
+    QVector<double> partitionYs() const { return partitionDividersH; }
 
 signals:
-    void partitionDividersChanged(const QVector<double>& xs);
+    void partitionDividersChanged(const QVector<double>& xs);   // vertical divider x-values
+    void partitionDividersHChanged(const QVector<double>& ys);  // horizontal divider y-values
     void branchChanged(int branchIndex);        // 0=All, 1=Upstream, 2=Downstream
-    void partitionSegmentChanged(int segment);  // -1=All, else segment index
+    void partitionSegmentChanged(int segment);  // -1=All, else x-segment index
+    void partitionYSegmentChanged(int segment); // -1=All, else y-segment index
+    void exportSegmentRequested();              // export current partition subset
 
 private:
     void setupUi();
@@ -114,18 +118,28 @@ private:
     void togglePartitionMode(bool enabled);
     void addPartitionDivider(double x);
     void removeNearestDivider(double x);
+    void addPartitionDividerH(double y);
+    void removeNearestDividerH(double y);
+    // Remove the divider (either orientation) nearest the given scene point, if
+    // within a small pixel tolerance. Returns true if one was removed.
+    bool removePartitionAtPixel(const QPointF& scenePos);
     void updatePartitionLines();
     void rebuildPartitionCombo();
+    void rebuildPartitionComboY();
+    void fitToScreen();
 
     struct PlotState {
         struct HighlightData { double x; };
         struct TextData { QString text; QPointF position; };
         QVector<HighlightData> highlights;
         QVector<TextData> floatingTexts;
+        QVector<double> partitionsV;
+        QVector<double> partitionsH;
         QString title;
         double xRangeMin = 0;
         double xRangeMax = 0;
     };
+    PlotState captureState() const;
     void saveState();
     void restoreState(const PlotState& state);
     void undoLastAction();
@@ -154,8 +168,10 @@ private:
     QAction* redoAction = nullptr;
 
     QAction* partitionAction = nullptr;
+    QComboBox* orientCombo = nullptr;
     QComboBox* branchCombo = nullptr;
     QComboBox* partitionCombo = nullptr;
+    QComboBox* partitionComboY = nullptr;
 
     QShortcut* undoShortcut = nullptr;
     QShortcut* redoShortcut = nullptr;
@@ -166,6 +182,7 @@ private:
     bool showOriginalData = true;
     bool textInsertionMode = false;
     bool partitionMode = false;
+    bool partitionHorizontal = false;   // orientation of dividers added in partition mode
     QString currentTitle;
     QString xColumnName;
     QString pendingText;
@@ -202,11 +219,14 @@ private:
     };
     QVector<FloatingText> floatingTextItems;
 
-    // Partition divider x-values (sorted) and their scene graphics.
+    // Vertical partition dividers (x-values, sorted) and their scene graphics.
     QVector<double> partitionDividers;
     QVector<QGraphicsLineItem*> partitionLineItems;
     QVector<QGraphicsSimpleTextItem*> partitionLabelItems;
-    static constexpr double DIVIDER_PICK_TOL_FRAC = 0.02; // fraction of x-range
+    // Horizontal partition dividers (y-values on the primary axis, sorted).
+    QVector<double> partitionDividersH;
+    QVector<QGraphicsLineItem*> partitionLineItemsH;
+    QVector<QGraphicsSimpleTextItem*> partitionLabelItemsH;
 
     QVector<PlotState> historyStack;
     QVector<PlotState> redoStack;

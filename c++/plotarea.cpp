@@ -8,6 +8,7 @@
 #include <QPen>
 #include <QPainter>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QGraphicsSceneMouseEvent>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -147,6 +148,10 @@ void PlotArea::createToolbar()
     legendAction->setToolTip("Toggle legend visibility");
     connect(legendAction, &QAction::toggled, this, &PlotArea::toggleLegend);
 
+    auto* fitAction = toolbar->addAction("Fit to Screen");
+    fitAction->setToolTip("Rescale both axes so the current data fills the view and clear any zoom");
+    connect(fitAction, &QAction::triggered, this, &PlotArea::fitToScreen);
+
     highlighterAction = toolbar->addAction("Highlight Mode");
     highlighterAction->setCheckable(true);
     highlighterAction->setChecked(false);
@@ -217,11 +222,28 @@ void PlotArea::createToolbar()
     partitionAction->setToolTip("Left-click to add a vertical divider, double-click to remove nearest");
     connect(partitionAction, &QAction::toggled, this, &PlotArea::togglePartitionMode);
 
+    orientCombo = new QComboBox(toolbar);
+    orientCombo->addItems({"Vertical", "Horizontal"});
+    orientCombo->setToolTip("Orientation of dividers added while Partition Mode is on");
+    toolbar->addWidget(orientCombo);
+    connect(orientCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int idx) { partitionHorizontal = (idx == 1); });
+
     auto* clearPartitionsAction = toolbar->addAction("Clear Partitions");
-    clearPartitionsAction->setToolTip("Remove all partition dividers");
+    clearPartitionsAction->setToolTip("Remove all partition dividers (both orientations)");
     connect(clearPartitionsAction, &QAction::triggered, this, [this]() {
+        if (partitionDividers.isEmpty() && partitionDividersH.isEmpty())
+            return;
+        saveState();
         clearPartitions();
         emit partitionDividersChanged(partitionDividers);
+        emit partitionDividersHChanged(partitionDividersH);
+    });
+
+    auto* exportSegmentAction = toolbar->addAction("Export Segment");
+    exportSegmentAction->setToolTip("Export the data of the currently selected partition to CSV (opens in Excel)");
+    connect(exportSegmentAction, &QAction::triggered, this, [this]() {
+        emit exportSegmentRequested();
     });
 
     toolbar->addWidget(new QLabel("  Branch:", toolbar));
@@ -233,15 +255,25 @@ void PlotArea::createToolbar()
     connect(branchCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int idx) { emit branchChanged(idx); });
 
-    toolbar->addWidget(new QLabel("  Segment:", toolbar));
+    toolbar->addWidget(new QLabel("  X Seg:", toolbar));
     partitionCombo = new QComboBox(toolbar);
     partitionCombo->addItem("All");
-    partitionCombo->setToolTip("Select a single partition segment to analyse");
+    partitionCombo->setToolTip("Select a single vertical (x) partition segment to analyse");
     toolbar->addWidget(partitionCombo);
     connect(partitionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int idx) {
         // Index 0 == "All" -> segment -1; otherwise segment index 0-based.
         emit partitionSegmentChanged(idx <= 0 ? -1 : idx - 1);
+    });
+
+    toolbar->addWidget(new QLabel("  Y Seg:", toolbar));
+    partitionComboY = new QComboBox(toolbar);
+    partitionComboY->addItem("All");
+    partitionComboY->setToolTip("Select a single horizontal (y) partition band to analyse");
+    toolbar->addWidget(partitionComboY);
+    connect(partitionComboY, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int idx) {
+        emit partitionYSegmentChanged(idx <= 0 ? -1 : idx - 1);
     });
 }
 
@@ -337,7 +369,9 @@ void PlotArea::createChart()
 
     chartView = new QChartView(chart, this);
     chartView->setRenderHint(QPainter::Antialiasing);
-    chartView->setRubberBand(QChartView::RectangleRubberBand);
+    // No rubber-band: a stray click/drag used to zoom into an empty rectangle
+    // and blank the plot. Zooming is done with the mouse wheel instead.
+    chartView->setRubberBand(QChartView::NoRubberBand);
 
     chartView->setMouseTracking(true);
     chartView->viewport()->setMouseTracking(true);
@@ -680,6 +714,14 @@ void PlotArea::clearPlot()
         if (lbl && chart->scene()) { chart->scene()->removeItem(lbl); delete lbl; }
     }
     partitionLabelItems.clear();
+    for (auto* line : partitionLineItemsH) {
+        if (line && chart->scene()) { chart->scene()->removeItem(line); delete line; }
+    }
+    partitionLineItemsH.clear();
+    for (auto* lbl : partitionLabelItemsH) {
+        if (lbl && chart->scene()) { chart->scene()->removeItem(lbl); delete lbl; }
+    }
+    partitionLabelItemsH.clear();
 
     // Clear floating texts
     for (auto& ft : floatingTextItems) {
@@ -837,6 +879,44 @@ void PlotArea::togglePartitionMode(bool enabled)
     }
 }
 
+void PlotArea::fitToScreen()
+{
+    if (plotItems.isEmpty() || !xAxis)
+        return;
+
+    // X: full extent across all series.
+    double xMin, xMax;
+    double gMin = std::numeric_limits<double>::max();
+    double gMax = std::numeric_limits<double>::lowest();
+    for (const auto& item : plotItems) {
+        if (finiteMinMax(item.xData, xMin, xMax)) {
+            gMin = std::min(gMin, xMin);
+            gMax = std::max(gMax, xMax);
+        }
+    }
+    if (gMin < gMax) {
+        double margin = (gMax - gMin) * 0.02;
+        if (margin == 0) margin = 1.0;
+        xAxis->setRange(gMin - margin, gMax + margin);
+    }
+    xMinInput->clear();
+    xMaxInput->clear();
+
+    // Y: each series fitted to its own axis.
+    for (const auto& item : plotItems) {
+        if (!item.yAxis)
+            continue;
+        double yMin, yMax;
+        if (!finiteMinMax(item.yData, yMin, yMax))
+            continue;
+        double margin = (yMax - yMin) * 0.05;
+        if (margin == 0) margin = 1.0;
+        item.yAxis->setRange(yMin - margin, yMax + margin);
+    }
+
+    updatePartitionLines();
+}
+
 void PlotArea::setBranchAvailable(bool loop)
 {
     if (!branchCombo)
@@ -854,10 +934,28 @@ void PlotArea::setBranchAvailable(bool loop)
     }
 }
 
+// Snap a value to the nearest entry of a data array (returns the input unchanged
+// when the array is empty).
+static double snapToNearest(const QVector<double>& data, double v)
+{
+    double best = v;
+    double bestDist = std::numeric_limits<double>::max();
+    for (double d : data) {
+        if (!std::isfinite(d)) continue;
+        double dist = std::abs(d - v);
+        if (dist < bestDist) { bestDist = dist; best = d; }
+    }
+    return best;
+}
+
 void PlotArea::addPartitionDivider(double x)
 {
     if (!std::isfinite(x))
         return;
+
+    // Snap to the nearest real data point so the divider sits on actual data.
+    if (!plotItems.isEmpty())
+        x = snapToNearest(plotItems.first().xData, x);
 
     // Ignore a divider that effectively duplicates an existing one.
     double tol = 1e-9;
@@ -870,6 +968,7 @@ void PlotArea::addPartitionDivider(double x)
             return;
     }
 
+    saveState();
     partitionDividers.append(x);
     std::sort(partitionDividers.begin(), partitionDividers.end());
 
@@ -892,17 +991,120 @@ void PlotArea::removeNearestDivider(double x)
     if (nearest < 0)
         return;
 
+    saveState();
     partitionDividers.remove(nearest);
     updatePartitionLines();
     emit partitionDividersChanged(partitionDividers);
     rebuildPartitionCombo();
 }
 
+void PlotArea::addPartitionDividerH(double y)
+{
+    if (!std::isfinite(y) || plotItems.isEmpty())
+        return;
+
+    // Snap to the nearest real data point on the primary series.
+    y = snapToNearest(plotItems.first().yData, y);
+
+    QValueAxis* yAx = plotItems.first().yAxis;
+    double tol = 1e-9;
+    if (yAx) {
+        double span = yAx->max() - yAx->min();
+        if (span > 0) tol = span * 1e-4;
+    }
+    for (double d : partitionDividersH) {
+        if (std::abs(d - y) <= tol)
+            return;
+    }
+
+    saveState();
+    partitionDividersH.append(y);
+    std::sort(partitionDividersH.begin(), partitionDividersH.end());
+
+    updatePartitionLines();
+    emit partitionDividersHChanged(partitionDividersH);
+    rebuildPartitionComboY();
+}
+
+void PlotArea::removeNearestDividerH(double y)
+{
+    if (partitionDividersH.isEmpty())
+        return;
+
+    int nearest = -1;
+    double best = std::numeric_limits<double>::max();
+    for (int i = 0; i < partitionDividersH.size(); ++i) {
+        double dist = std::abs(partitionDividersH[i] - y);
+        if (dist < best) { best = dist; nearest = i; }
+    }
+    if (nearest < 0)
+        return;
+
+    saveState();
+    partitionDividersH.remove(nearest);
+    updatePartitionLines();
+    emit partitionDividersHChanged(partitionDividersH);
+    rebuildPartitionComboY();
+}
+
+bool PlotArea::removePartitionAtPixel(const QPointF& scenePos)
+{
+    if (!chart || plotItems.isEmpty())
+        return false;
+
+    const double tol = 6.0;   // pixels
+    double best = tol;
+    int bestV = -1, bestH = -1;
+
+    // Nearest vertical divider by horizontal pixel distance.
+    for (int i = 0; i < partitionDividers.size(); ++i) {
+        double x = partitionDividers[i];
+        if (xAxis && (x < xAxis->min() || x > xAxis->max()))
+            continue;
+        double px = chart->mapToPosition(QPointF(x, 0)).x();
+        double d = std::abs(scenePos.x() - px);
+        if (d < best) { best = d; bestV = i; bestH = -1; }
+    }
+
+    // Nearest horizontal divider by vertical pixel distance.
+    QValueAxis* yAx = plotItems.first().yAxis;
+    auto* yRef = plotItems.first().series;
+    for (int i = 0; i < partitionDividersH.size(); ++i) {
+        double y = partitionDividersH[i];
+        if (yAx && (y < yAx->min() || y > yAx->max()))
+            continue;
+        double py = yRef ? chart->mapToPosition(QPointF(0, y), yRef).y()
+                         : chart->mapToPosition(QPointF(0, y)).y();
+        double d = std::abs(scenePos.y() - py);
+        if (d < best) { best = d; bestH = i; bestV = -1; }
+    }
+
+    if (bestV >= 0) {
+        saveState();
+        partitionDividers.remove(bestV);
+        updatePartitionLines();
+        emit partitionDividersChanged(partitionDividers);
+        rebuildPartitionCombo();
+        return true;
+    }
+    if (bestH >= 0) {
+        saveState();
+        partitionDividersH.remove(bestH);
+        updatePartitionLines();
+        emit partitionDividersHChanged(partitionDividersH);
+        rebuildPartitionComboY();
+        return true;
+    }
+    return false;
+}
+
 void PlotArea::clearPartitions()
 {
     partitionDividers.clear();
+    partitionDividersH.clear();
     updatePartitionLines();
     rebuildPartitionCombo();
+    rebuildPartitionComboY();
 }
 
 void PlotArea::updatePartitionLines()
@@ -910,37 +1112,80 @@ void PlotArea::updatePartitionLines()
     if (!chart || !chart->scene())
         return;
 
-    // Remove old graphics.
-    for (auto* line : partitionLineItems) {
+    // Remove old graphics (both orientations).
+    for (auto* line : partitionLineItems)
         if (line) { chart->scene()->removeItem(line); delete line; }
-    }
     partitionLineItems.clear();
-    for (auto* lbl : partitionLabelItems) {
+    for (auto* lbl : partitionLabelItems)
         if (lbl) { chart->scene()->removeItem(lbl); delete lbl; }
-    }
     partitionLabelItems.clear();
+    for (auto* line : partitionLineItemsH)
+        if (line) { chart->scene()->removeItem(line); delete line; }
+    partitionLineItemsH.clear();
+    for (auto* lbl : partitionLabelItemsH)
+        if (lbl) { chart->scene()->removeItem(lbl); delete lbl; }
+    partitionLabelItemsH.clear();
 
-    if (partitionDividers.isEmpty() || plotItems.isEmpty())
+    if (plotItems.isEmpty())
         return;
 
     QRectF area = chart->plotArea();
-    QPen dividerPen(QColor(41, 128, 185), 2, Qt::SolidLine); // distinct blue
+    const QColor vColor(41, 128, 185);   // blue for vertical
+    const QColor hColor(192, 57, 43);    // red for horizontal
+    QPen vPen(vColor, 2, Qt::SolidLine);
+    QPen hPen(hColor, 2, Qt::SolidLine);
 
+    // Vertical dividers: value shown on the x-axis (bottom).
     for (int i = 0; i < partitionDividers.size(); ++i) {
         double x = partitionDividers[i];
         if (xAxis && (x < xAxis->min() || x > xAxis->max()))
             continue;
         QPointF pos = chart->mapToPosition(QPointF(x, 0));
 
-        auto* line = chart->scene()->addLine(
-            pos.x(), area.top(), pos.x(), area.bottom(), dividerPen);
-        partitionLineItems.append(line);
+        partitionLineItems.append(chart->scene()->addLine(
+            pos.x(), area.top(), pos.x(), area.bottom(), vPen));
 
-        auto* lbl = chart->scene()->addSimpleText(QString("P%1").arg(i + 1));
-        lbl->setBrush(QBrush(QColor(41, 128, 185)));
+        auto* lbl = chart->scene()->addSimpleText(
+            QString("P%1  x=%2").arg(i + 1).arg(x, 0, 'g', 5));
+        lbl->setBrush(QBrush(vColor));
         lbl->setFont(QFont("Arial", 8, QFont::Bold));
         lbl->setPos(pos.x() + 3, area.top() + 2);
         partitionLabelItems.append(lbl);
+
+        // Value pinned near the x-axis.
+        auto* axisLbl = chart->scene()->addSimpleText(QString::number(x, 'g', 5));
+        axisLbl->setBrush(QBrush(vColor));
+        axisLbl->setFont(QFont("Arial", 8));
+        axisLbl->setPos(pos.x() + 2, area.bottom() + 2);
+        partitionLabelItems.append(axisLbl);
+    }
+
+    // Horizontal dividers: positioned/valued against the primary (left) y-axis.
+    QValueAxis* yAx = plotItems.first().yAxis;
+    auto* yRef = plotItems.first().series;
+    for (int i = 0; i < partitionDividersH.size(); ++i) {
+        double y = partitionDividersH[i];
+        if (yAx && (y < yAx->min() || y > yAx->max()))
+            continue;
+        QPointF pos = yRef ? chart->mapToPosition(QPointF(0, y), yRef)
+                           : chart->mapToPosition(QPointF(0, y));
+
+        partitionLineItemsH.append(chart->scene()->addLine(
+            area.left(), pos.y(), area.right(), pos.y(), hPen));
+
+        auto* lbl = chart->scene()->addSimpleText(
+            QString("H%1  y=%2").arg(i + 1).arg(y, 0, 'g', 5));
+        lbl->setBrush(QBrush(hColor));
+        lbl->setFont(QFont("Arial", 8, QFont::Bold));
+        lbl->setPos(area.right() - lbl->boundingRect().width() - 4, pos.y() + 2);
+        partitionLabelItemsH.append(lbl);
+
+        // Value pinned near the y-axis (left).
+        auto* axisLbl = chart->scene()->addSimpleText(QString::number(y, 'g', 5));
+        axisLbl->setBrush(QBrush(hColor));
+        axisLbl->setFont(QFont("Arial", 8));
+        axisLbl->setPos(area.left() - axisLbl->boundingRect().width() - 4, pos.y() - 6);
+        partitionLabelItemsH.append(axisLbl);
     }
 }
 
@@ -959,24 +1204,90 @@ void PlotArea::rebuildPartitionCombo()
     for (int i = 0; i < segments; ++i)
         partitionCombo->addItem(QString("Segment %1").arg(i + 1));
 
-    if (prev >= 0 && prev < partitionCombo->count())
-        partitionCombo->setCurrentIndex(prev);
-    else
-        partitionCombo->setCurrentIndex(0);
+    int target = (prev >= 0 && prev < partitionCombo->count()) ? prev : 0;
+    partitionCombo->setCurrentIndex(target);
     partitionCombo->blockSignals(false);
 
-    // If the previously selected segment vanished, notify listeners.
-    emit partitionSegmentChanged(partitionCombo->currentIndex() <= 0
-                                     ? -1 : partitionCombo->currentIndex() - 1);
+    // Only notify when the effective selection actually changed (e.g. the
+    // previously selected segment vanished). Merely adding a divider while
+    // "All" is selected must NOT trigger a replot that clears annotations.
+    if (target != prev)
+        emit partitionSegmentChanged(target <= 0 ? -1 : target - 1);
+}
+
+void PlotArea::rebuildPartitionComboY()
+{
+    if (!partitionComboY)
+        return;
+
+    int prev = partitionComboY->currentIndex();
+    partitionComboY->blockSignals(true);
+    partitionComboY->clear();
+    partitionComboY->addItem("All");
+    int segments = partitionDividersH.isEmpty() ? 0 : partitionDividersH.size() + 1;
+    for (int i = 0; i < segments; ++i)
+        partitionComboY->addItem(QString("Band %1").arg(i + 1));
+
+    int target = (prev >= 0 && prev < partitionComboY->count()) ? prev : 0;
+    partitionComboY->setCurrentIndex(target);
+    partitionComboY->blockSignals(false);
+
+    if (target != prev)
+        emit partitionYSegmentChanged(target <= 0 ? -1 : target - 1);
 }
 
 // ========================================================================
 // MOUSE EVENT HANDLING
 // ========================================================================
 
+// Zoom one axis around the fractional position `frac` (0..1 across the axis)
+// by `factor` (<1 zooms in, >1 zooms out).
+static void zoomAxisRange(QValueAxis* axis, double frac, double factor)
+{
+    if (!axis) return;
+    double lo = axis->min(), hi = axis->max();
+    double span = hi - lo;
+    if (span <= 0) return;
+    double center = lo + frac * span;
+    axis->setRange(center - (center - lo) * factor,
+                   center + (hi - center) * factor);
+}
+
 bool PlotArea::eventFilter(QObject* obj, QEvent* event)
 {
     if (obj == chartView->viewport()) {
+        if (event->type() == QEvent::Wheel) {
+            auto* we = static_cast<QWheelEvent*>(event);
+            if (!chart || plotItems.isEmpty())
+                return true;
+
+            double factor = we->angleDelta().y() > 0 ? 0.8 : 1.25; // in / out
+            QPointF scenePos = chartView->mapToScene(we->position().toPoint());
+            QRectF area = chart->plotArea();
+
+            // Fractional cursor position across the plot (y inverted: top=1).
+            double fracX = (scenePos.x() - area.left()) / area.width();
+            double fracY = (area.bottom() - scenePos.y()) / area.height();
+
+            bool overX = scenePos.y() > area.bottom() &&
+                         scenePos.x() >= area.left() && scenePos.x() <= area.right();
+            bool overY = scenePos.x() < area.left() &&
+                         scenePos.y() >= area.top() && scenePos.y() <= area.bottom();
+
+            if (overX) {
+                zoomAxisRange(xAxis, std::clamp(fracX, 0.0, 1.0), factor);
+            } else if (overY) {
+                for (auto& item : plotItems)
+                    zoomAxisRange(item.yAxis, std::clamp(fracY, 0.0, 1.0), factor);
+            } else {
+                // Over the plot: zoom both, centred on the cursor.
+                zoomAxisRange(xAxis, std::clamp(fracX, 0.0, 1.0), factor);
+                for (auto& item : plotItems)
+                    zoomAxisRange(item.yAxis, std::clamp(fracY, 0.0, 1.0), factor);
+            }
+            updatePartitionLines();
+            return true;
+        }
         if (event->type() == QEvent::MouseMove) {
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
             QPointF scenePos = chartView->mapToScene(mouseEvent->pos());
@@ -1015,6 +1326,12 @@ bool PlotArea::eventFilter(QObject* obj, QEvent* event)
                 cancelTextInsertion();
                 return true;
             }
+            // Right-click directly on a partition line removes that specific line.
+            if (mouseEvent->button() == Qt::RightButton && partitionMode) {
+                QPointF scenePos = chartView->mapToScene(mouseEvent->pos());
+                if (removePartitionAtPixel(scenePos))
+                    return true;
+            }
         }
         if (event->type() == QEvent::MouseButtonDblClick) {
             // Already handled via timer
@@ -1036,7 +1353,10 @@ void PlotArea::handleLeftClick(QPointF valuePos)
     if (textInsertionMode) {
         insertFloatingTextAt(valuePos.x(), valuePos.y());
     } else if (partitionMode) {
-        addPartitionDivider(valuePos.x());
+        if (partitionHorizontal)
+            addPartitionDividerH(valuePos.y());
+        else
+            addPartitionDivider(valuePos.x());
     } else if (highlighterMode) {
         saveState();
         addHighlight(valuePos.x());
@@ -1046,7 +1366,10 @@ void PlotArea::handleLeftClick(QPointF valuePos)
 void PlotArea::handleDoubleClick(QPointF valuePos)
 {
     if (partitionMode) {
-        removeNearestDivider(valuePos.x());
+        if (partitionHorizontal)
+            removeNearestDividerH(valuePos.y());
+        else
+            removeNearestDivider(valuePos.x());
     } else if (highlighterMode) {
         saveState();
         removeNearestHighlight(valuePos.x());
@@ -1360,16 +1683,15 @@ void PlotArea::removeTextItem(EditableTextItem* item)
 // UNDO / REDO
 // ========================================================================
 
-void PlotArea::saveState()
+PlotArea::PlotState PlotArea::captureState() const
 {
     PlotState state;
-
     for (const auto& hl : highlightLines)
         state.highlights.append({hl.xValue});
-
     for (const auto& ft : floatingTextItems)
         state.floatingTexts.append({ft.text, ft.position});
-
+    state.partitionsV = partitionDividers;
+    state.partitionsH = partitionDividersH;
     state.title = currentTitle;
 
     bool minOk, maxOk;
@@ -1377,6 +1699,12 @@ void PlotArea::saveState()
     state.xRangeMax = xMaxInput->text().toDouble(&maxOk);
     if (!minOk) state.xRangeMin = 0;
     if (!maxOk) state.xRangeMax = 0;
+    return state;
+}
+
+void PlotArea::saveState()
+{
+    PlotState state = captureState();
 
     historyStack.append(state);
     if (historyStack.size() > MAX_HISTORY)
@@ -1423,6 +1751,15 @@ void PlotArea::restoreState(const PlotState& state)
         floatingTextItems.append(ft);
     }
 
+    // Restore partition dividers (both orientations) and sync the UI.
+    partitionDividers = state.partitionsV;
+    partitionDividersH = state.partitionsH;
+    updatePartitionLines();
+    rebuildPartitionCombo();
+    rebuildPartitionComboY();
+    emit partitionDividersChanged(partitionDividers);
+    emit partitionDividersHChanged(partitionDividersH);
+
     // Restore title
     currentTitle = state.title;
     titleInput->setText(state.title);
@@ -1443,16 +1780,7 @@ void PlotArea::undoLastAction()
         return;
 
     // Save current state to redo
-    PlotState currentState;
-    for (const auto& hl : highlightLines)
-        currentState.highlights.append({hl.xValue});
-    for (const auto& ft : floatingTextItems)
-        currentState.floatingTexts.append({ft.text, ft.position});
-    currentState.title = currentTitle;
-    bool minOk, maxOk;
-    currentState.xRangeMin = xMinInput->text().toDouble(&minOk);
-    currentState.xRangeMax = xMaxInput->text().toDouble(&maxOk);
-    redoStack.append(currentState);
+    redoStack.append(captureState());
 
     PlotState prevState = historyStack.takeLast();
     restoreState(prevState);
@@ -1466,16 +1794,7 @@ void PlotArea::redoLastAction()
         return;
 
     // Save current state to history
-    PlotState currentState;
-    for (const auto& hl : highlightLines)
-        currentState.highlights.append({hl.xValue});
-    for (const auto& ft : floatingTextItems)
-        currentState.floatingTexts.append({ft.text, ft.position});
-    currentState.title = currentTitle;
-    bool minOk, maxOk;
-    currentState.xRangeMin = xMinInput->text().toDouble(&minOk);
-    currentState.xRangeMax = xMaxInput->text().toDouble(&maxOk);
-    historyStack.append(currentState);
+    historyStack.append(captureState());
 
     PlotState nextState = redoStack.takeLast();
     restoreState(nextState);
