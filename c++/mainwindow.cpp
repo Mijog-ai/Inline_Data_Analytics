@@ -72,6 +72,12 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::setActiveBranch);
     connect(rightPanel->plotArea, &PlotArea::partitionSegmentChanged,
             this, &MainWindow::setActivePartition);
+    connect(rightPanel->plotArea, &PlotArea::partitionDividersHChanged,
+            this, &MainWindow::onPartitionDividersHChanged);
+    connect(rightPanel->plotArea, &PlotArea::partitionYSegmentChanged,
+            this, &MainWindow::setActivePartitionY);
+    connect(rightPanel->plotArea, &PlotArea::exportSegmentRequested,
+            this, &MainWindow::exportCurrentSubset);
 
     layout->addWidget(leftPanel, 1);
     layout->addWidget(rightPanel, 4);
@@ -129,7 +135,9 @@ void MainWindow::clearAllData()
     filteredDf = DataFrame();
     unsavedChanges = false;
     partitionDividers.clear();
+    partitionDividersH.clear();
     activePartition = -1;
+    activePartitionY = -1;
     activeBranch = BranchAll;
 }
 
@@ -147,7 +155,9 @@ void MainWindow::resetUi()
     rightPanel->plotArea->clearPlot();
     rightPanel->statisticsArea->clearStats();
     partitionDividers.clear();
+    partitionDividersH.clear();
     activePartition = -1;
+    activePartitionY = -1;
     activeBranch = BranchAll;
 
     // Reset toolbar file name
@@ -522,11 +532,36 @@ DataFrame MainWindow::currentSubset() const
         }
     }
 
+    // 3. Horizontal partition band restricts by y-value on the primary y column.
+    double bandLo = std::numeric_limits<double>::lowest();
+    double bandHi = std::numeric_limits<double>::max();
+    QString yCol;
+    {
+        QStringList yCols = leftPanel->axisSelection->yColumns();
+        if (!yCols.isEmpty())
+            yCol = yCols.first();
+    }
+    if (activePartitionY >= 0 && !partitionDividersH.isEmpty() &&
+        !yCol.isEmpty() && filteredDf.hasColumn(yCol)) {
+        QVector<double> d = partitionDividersH;
+        std::sort(d.begin(), d.end());
+        int band = activePartitionY;
+        if (band > d.size())
+            band = -1;
+        if (band >= 0) {
+            bandLo = (band == 0)        ? std::numeric_limits<double>::lowest() : d[band - 1];
+            bandHi = (band == d.size()) ? std::numeric_limits<double>::max()    : d[band];
+        }
+    }
+    const bool haveBand = (bandLo != std::numeric_limits<double>::lowest() ||
+                           bandHi != std::numeric_limits<double>::max());
+    const QVector<double>* yvals = haveBand ? &filteredDf.columnRef(yCol) : nullptr;
+
     // Fast path: nothing is actually narrowed, so hand back the frame as-is.
     bool fullRows = (rowLo == 0 && rowHi == n);
     bool fullSeg  = (segLo == std::numeric_limits<double>::lowest() &&
                      segHi == std::numeric_limits<double>::max());
-    if (fullRows && fullSeg)
+    if (fullRows && fullSeg && !haveBand)
         return filteredDf;
 
     // Build the sliced frame, keeping every column aligned.
@@ -543,6 +578,11 @@ DataFrame MainWindow::currentSubset() const
         double xv = x[r];
         if (std::isfinite(xv) && (xv < segLo || xv >= segHi))
             continue;
+        if (yvals) {
+            double yv = (*yvals)[r];
+            if (std::isfinite(yv) && (yv < bandLo || yv >= bandHi))
+                continue;
+        }
         for (int c = 0; c < cols.size(); ++c)
             out[c].append((*srcCols[c])[r]);
     }
@@ -560,7 +600,11 @@ void MainWindow::onPartitionDividersChanged(const QVector<double>& xs)
     // Keep the active segment valid; otherwise fall back to the whole range.
     if (activePartition > partitionDividers.size())
         activePartition = -1;
-    updatePlot(false);
+    // Dividers only change the plotted data when an x-segment is actually
+    // selected. When viewing "All", skip the replot so annotations (text
+    // boxes, highlights) placed on the plot are preserved.
+    if (activePartition >= 0)
+        updatePlot(false);
 }
 
 void MainWindow::setActiveBranch(int branch)
@@ -573,6 +617,68 @@ void MainWindow::setActivePartition(int segment)
 {
     activePartition = segment;
     updatePlot(false);
+}
+
+void MainWindow::onPartitionDividersHChanged(const QVector<double>& ys)
+{
+    partitionDividersH = ys;
+    std::sort(partitionDividersH.begin(), partitionDividersH.end());
+    if (activePartitionY > partitionDividersH.size())
+        activePartitionY = -1;
+    if (activePartitionY >= 0)
+        updatePlot(false);
+}
+
+void MainWindow::setActivePartitionY(int segment)
+{
+    activePartitionY = segment;
+    updatePlot(false);
+}
+
+void MainWindow::exportCurrentSubset()
+{
+    DataFrame subset = currentSubset();
+    if (subset.isEmpty()) {
+        QMessageBox::warning(this, tr("Nothing to Export"),
+                             tr("The selected partition contains no data."));
+        return;
+    }
+
+    QString base = currentFile.isEmpty()
+        ? QStringLiteral("partition")
+        : QFileInfo(currentFile).completeBaseName() + "_partition";
+    // Reflect the active selection in the suggested name.
+    if (activeBranch == BranchUpstream)   base += "_upstream";
+    else if (activeBranch == BranchDownstream) base += "_downstream";
+    if (activePartition >= 0)  base += QString("_xseg%1").arg(activePartition + 1);
+    if (activePartitionY >= 0) base += QString("_yband%1").arg(activePartitionY + 1);
+
+    QString fileName = QFileDialog::getSaveFileName(
+        this, tr("Export Partition Data"), base, tr("CSV Files (*.csv)"));
+    if (fileName.isEmpty())
+        return;
+    if (!fileName.endsWith(".csv", Qt::CaseInsensitive))
+        fileName += ".csv";
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, tr("Error"), tr("Could not open file for writing"));
+        return;
+    }
+    QTextStream out(&file);
+    const QStringList cols = subset.columnNames();
+    out << cols.join(';') << "\n";
+    for (int r = 0; r < subset.rowCount(); ++r) {
+        QStringList vals;
+        for (const auto& col : cols)
+            vals << QString::number(subset.value(r, col), 'g', 10);
+        out << vals.join(';') << "\n";
+    }
+    file.close();
+
+    QMessageBox::information(this, tr("Export Complete"),
+        tr("Exported %1 rows to:\n%2\n\n(CSV opens directly in Excel.)")
+            .arg(subset.rowCount()).arg(fileName));
 }
 
 void MainWindow::updateUiAfterLoad()

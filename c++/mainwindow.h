@@ -29,8 +29,10 @@ public:
     // Everything that is plotted, analysed or fitted operates on currentSubset(),
     // which is filteredDf narrowed to the selected branch and partition segment.
     enum Branch { BranchAll = 0, BranchUpstream = 1, BranchDownstream = 2 };
-    QVector<double> partitionDividers;   // divider x-values, kept sorted ascending
-    int activePartition = -1;            // -1 = whole range, else segment index [0 .. dividers.size()]
+    QVector<double> partitionDividers;   // vertical divider x-values, sorted ascending
+    QVector<double> partitionDividersH;  // horizontal divider y-values, sorted ascending
+    int activePartition = -1;            // -1 = whole range, else x-segment index
+    int activePartitionY = -1;           // -1 = whole range, else y-band index
     int activeBranch = BranchAll;
 
     // filteredDf narrowed to the active branch and partition segment.
@@ -55,8 +57,11 @@ public slots:
     void updateStatistics();
 
     void onPartitionDividersChanged(const QVector<double>& xs);
+    void onPartitionDividersHChanged(const QVector<double>& ys);
     void setActiveBranch(int branch);
     void setActivePartition(int segment);
+    void setActivePartitionY(int segment);
+    void exportCurrentSubset();
 
     void clearAllData();
     void resetUi();
