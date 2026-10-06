@@ -4,4 +4,7 @@
         <file alias="app_de.qm">i18n/app_de.qm</file>
         <file alias="qtbase_de.qm">i18n/qtbase_de.qm</file>
     </qresource>
+    <qresource prefix="/">
+        <file alias="appicon.png">appicon.png</file>
+    </qresource>
 </RCC>

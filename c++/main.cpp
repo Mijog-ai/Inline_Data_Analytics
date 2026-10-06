@@ -6,6 +6,7 @@
 #include <QSettings>
 #include <QTranslator>
 #include <QLibraryInfo>
+#include <QIcon>
 #include "mainwindow.h"
 
 static QFile logFile;
@@ -49,6 +50,7 @@ int main(int argc, char *argv[])
     app.setOrganizationName("Inline");
     app.setApplicationName("Inline Data Analytics");
     app.setApplicationVersion("1.0");
+    app.setWindowIcon(QIcon(":/appicon.png"));
 
     // Language: default to German; the user can switch to English in Settings.
     // English is the source language, so it needs no translation file.

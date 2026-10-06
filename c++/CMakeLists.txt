@@ -55,6 +55,11 @@ set(PROJECT_SOURCES
     resources.qrc
 )
 
+# Windows application icon (compiled into the executable).
+if(WIN32)
+    list(APPEND PROJECT_SOURCES appicon.rc)
+endif()
+
 qt_add_executable(InlineDataAnalytics ${PROJECT_SOURCES})
 
 target_link_libraries(InlineDataAnalytics PRIVATE
