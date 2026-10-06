@@ -16,9 +16,11 @@ private slots:
     void saveSession();
     void loadSession();
     void newSession();
+    void changeLanguage(const QString& code);
 
 private:
     QMenu* fileMenu;
     QMenu* editMenu;
+    QMenu* settingsMenu;
     MainWindow* mainWindow;
 };

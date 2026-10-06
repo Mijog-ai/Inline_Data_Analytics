@@ -4,7 +4,7 @@
 #include <QLabel>
 
 AxisSelection::AxisSelection(QWidget* parent)
-    : QGroupBox("Axis Selection", parent)
+    : QGroupBox(tr("Axis Selection"), parent)
 {
     setupUi();
 }
@@ -14,22 +14,22 @@ void AxisSelection::setupUi()
     auto* layout = new QVBoxLayout(this);
 
     // X-axis selection
-    auto* xLabel = new QLabel("X-Axis Column:");
+    auto* xLabel = new QLabel(tr("X-Axis Column:"));
     xLabel->setStyleSheet("font-weight: bold;");
     layout->addWidget(xLabel);
 
     xCombo = new QComboBox(this);
-    xCombo->setToolTip("Select X-axis column");
+    xCombo->setToolTip(tr("Select X-axis column"));
     layout->addWidget(xCombo);
 
     // Y-axis selection
-    auto* yLabel = new QLabel("Y-Axis Columns (max 3):");
+    auto* yLabel = new QLabel(tr("Y-Axis Columns (max 3):"));
     yLabel->setStyleSheet("font-weight: bold;");
     layout->addWidget(yLabel);
 
     yList = new QListWidget(this);
     yList->setSelectionMode(QAbstractItemView::MultiSelection);
-    yList->setToolTip("Select up to 3 Y-axis columns");
+    yList->setToolTip(tr("Select up to 3 Y-axis columns"));
     yList->setMaximumHeight(120);
     layout->addWidget(yList);
 

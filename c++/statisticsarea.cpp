@@ -17,13 +17,13 @@ void StatisticsArea::setupUi()
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    auto* titleLabel = new QLabel("Statistics", this);
+    auto* titleLabel = new QLabel(tr("Statistics"), this);
     titleLabel->setStyleSheet("font-weight: bold; font-size: 11pt; padding: 4px;");
     layout->addWidget(titleLabel);
 
     table = new QTableWidget(this);
     table->setColumnCount(5);
-    table->setHorizontalHeaderLabels({"Statistic", "Max", "Mean", "Min", "Std"});
+    table->setHorizontalHeaderLabels({tr("Statistic"), tr("Max"), tr("Mean"), tr("Min"), tr("Std")});
     table->horizontalHeader()->setStretchLastSection(true);
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -90,7 +90,7 @@ void StatisticsArea::updateStats(const DataFrame& df)
         const auto& s = stats[i];
 
         auto* nameItem = new QTableWidgetItem(s.name);
-        nameItem->setToolTip(QString("Count: %1").arg(s.count));
+        nameItem->setToolTip(tr("Count: %1").arg(s.count));
         table->setItem(i, 0, nameItem);
 
         auto* maxItem = new QTableWidgetItem(QString::number(s.max, 'f', 4));

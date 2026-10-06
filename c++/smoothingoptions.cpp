@@ -3,7 +3,7 @@
 #include <QFont>
 
 SmoothingOptions::SmoothingOptions(QWidget* parent)
-    : QGroupBox("Advanced Smoothing", parent)
+    : QGroupBox(tr("Advanced Smoothing"), parent)
 {
     setStyleSheet(R"(
         QGroupBox {
@@ -29,7 +29,7 @@ void SmoothingOptions::setupUi()
 
     // Enable/Disable smoothing
     auto* enableLayout = new QHBoxLayout();
-    smoothCheck = new QCheckBox("Enable Smoothing", this);
+    smoothCheck = new QCheckBox(tr("Enable Smoothing"), this);
     QFont boldFont("Arial", 10, QFont::Bold);
     smoothCheck->setFont(boldFont);
     enableLayout->addWidget(smoothCheck);
@@ -44,7 +44,7 @@ void SmoothingOptions::setupUi()
 
     // Method selection
     auto* methodLayout = new QVBoxLayout();
-    auto* methodLabel = new QLabel("Smoothing Algorithm:", this);
+    auto* methodLabel = new QLabel(tr("Smoothing Algorithm:"), this);
     methodLabel->setFont(QFont("Arial", 9, QFont::Bold));
     methodLayout->addWidget(methodLabel);
 
@@ -57,7 +57,7 @@ void SmoothingOptions::setupUi()
         "Median Filter",
         "Lowess (Local Regression)"
     });
-    smoothMethod->setToolTip("Select smoothing algorithm");
+    smoothMethod->setToolTip(tr("Select smoothing algorithm"));
     methodLayout->addWidget(smoothMethod);
 
     methodDescription = new QLabel(this);
@@ -78,7 +78,7 @@ void SmoothingOptions::setupUi()
     // Row 0: Window Size (with slider)
     windowContainer = new QVBoxLayout();
     auto* windowHeader = new QHBoxLayout();
-    auto* windowLabel = new QLabel("Window Size:", this);
+    auto* windowLabel = new QLabel(tr("Window Size:"), this);
     windowValueLabel = new QLabel("51", this);
     windowValueLabel->setStyleSheet("color: #3498db; font-weight: bold;");
     windowHeader->addWidget(windowLabel);
@@ -100,13 +100,13 @@ void SmoothingOptions::setupUi()
     polyOrder = new QSpinBox(this);
     polyOrder->setRange(1, 10);
     polyOrder->setValue(3);
-    polyOrder->setToolTip("Order of polynomial for Savitzky-Golay filter");
-    paramsLayout->addRow("Polynomial Order:", polyOrder);
+    polyOrder->setToolTip(tr("Order of polynomial for Savitzky-Golay filter"));
+    paramsLayout->addRow(tr("Polynomial Order:"), polyOrder);
 
     // Row 2: Gaussian Sigma (with slider)
     sigmaContainer = new QVBoxLayout();
     auto* sigmaHeader = new QHBoxLayout();
-    auto* sigmaLabel = new QLabel("Gaussian Sigma:", this);
+    auto* sigmaLabel = new QLabel(tr("Gaussian Sigma:"), this);
     sigmaValueLabel = new QLabel("2.0", this);
     sigmaValueLabel->setStyleSheet("color: #3498db; font-weight: bold;");
     sigmaHeader->addWidget(sigmaLabel);
@@ -127,8 +127,8 @@ void SmoothingOptions::setupUi()
     alpha->setValue(0.3);
     alpha->setSingleStep(0.05);
     alpha->setDecimals(2);
-    alpha->setToolTip("Smoothing factor (0.01-1.0). Higher = more responsive");
-    paramsLayout->addRow("Alpha (EMA):", alpha);
+    alpha->setToolTip(tr("Smoothing factor (0.01-1.0). Higher = more responsive"));
+    paramsLayout->addRow(tr("Alpha (EMA):"), alpha);
 
     // Row 4: Lowess Fraction
     lowessFrac = new QDoubleSpinBox(this);
@@ -136,8 +136,8 @@ void SmoothingOptions::setupUi()
     lowessFrac->setValue(0.1);
     lowessFrac->setSingleStep(0.05);
     lowessFrac->setDecimals(2);
-    lowessFrac->setToolTip("Fraction of data to use (0.01-1.0)");
-    paramsLayout->addRow("Lowess Fraction:", lowessFrac);
+    lowessFrac->setToolTip(tr("Fraction of data to use (0.01-1.0)"));
+    paramsLayout->addRow(tr("Lowess Fraction:"), lowessFrac);
 
     mainLayout->addLayout(paramsLayout);
 
@@ -149,16 +149,16 @@ void SmoothingOptions::setupUi()
 
     // Quick presets
     auto* presetLayout = new QHBoxLayout();
-    auto* presetLabel = new QLabel("Quick Presets:", this);
+    auto* presetLabel = new QLabel(tr("Quick Presets:"), this);
     presetLabel->setFont(QFont("Arial", 9, QFont::Bold));
     presetLayout->addWidget(presetLabel);
 
-    lightButton = new QPushButton("Light", this);
-    lightButton->setToolTip("Light smoothing");
-    mediumButton = new QPushButton("Medium", this);
-    mediumButton->setToolTip("Medium smoothing");
-    heavyButton = new QPushButton("Heavy", this);
-    heavyButton->setToolTip("Heavy smoothing");
+    lightButton = new QPushButton(tr("Light"), this);
+    lightButton->setToolTip(tr("Light smoothing"));
+    mediumButton = new QPushButton(tr("Medium"), this);
+    mediumButton->setToolTip(tr("Medium smoothing"));
+    heavyButton = new QPushButton(tr("Heavy"), this);
+    heavyButton->setToolTip(tr("Heavy smoothing"));
 
     presetLayout->addWidget(lightButton);
     presetLayout->addWidget(mediumButton);
@@ -237,13 +237,14 @@ void SmoothingOptions::onSmoothingToggled(int state)
 
 void SmoothingOptions::updateMethodDescription()
 {
-    static const QMap<QString, QString> descriptions = {
-        {"Moving Average", "Simple average over window. Fast, good for uniform noise."},
-        {"Savitzky-Golay", "Polynomial smoothing. Preserves peaks and features."},
-        {"Gaussian Filter", "Gaussian kernel smoothing. Natural, bell-curved weights."},
-        {"Exponential Moving Avg", "Weighted average favoring recent data. Good for trends."},
-        {"Median Filter", "Replaces with median value. Excellent for spike removal."},
-        {"Lowess (Local Regression)", "Local weighted regression. Adaptive to data."}
+    // Keys match the (untranslated) combo item text; descriptions are translated.
+    const QMap<QString, QString> descriptions = {
+        {"Moving Average", tr("Simple average over window. Fast, good for uniform noise.")},
+        {"Savitzky-Golay", tr("Polynomial smoothing. Preserves peaks and features.")},
+        {"Gaussian Filter", tr("Gaussian kernel smoothing. Natural, bell-curved weights.")},
+        {"Exponential Moving Avg", tr("Weighted average favoring recent data. Good for trends.")},
+        {"Median Filter", tr("Replaces with median value. Excellent for spike removal.")},
+        {"Lowess (Local Regression)", tr("Local weighted regression. Adaptive to data.")}
     };
 
     QString method = smoothMethod->currentText();

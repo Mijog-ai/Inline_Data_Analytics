@@ -97,15 +97,15 @@ void PlotArea::createTitleControls()
     auto* layout = new QHBoxLayout(container);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    auto* label = new QLabel("Title:", container);
+    auto* label = new QLabel(tr("Title:"), container);
     label->setStyleSheet("font-weight: bold;");
     layout->addWidget(label);
 
     titleInput = new QLineEdit(container);
-    titleInput->setPlaceholderText("Enter plot title...");
+    titleInput->setPlaceholderText(tr("Enter plot title..."));
     layout->addWidget(titleInput, 1);
 
-    setTitleButton = new QPushButton("Set Title", container);
+    setTitleButton = new QPushButton(tr("Set Title"), container);
     setTitleButton->setStyleSheet(R"(
         QPushButton {
             background-color: #3498db;
@@ -133,50 +133,50 @@ void PlotArea::createTitleControls()
 
 void PlotArea::createToolbar()
 {
-    toolbar = new QToolBar("Plot Tools", this);
+    toolbar = new QToolBar(tr("Plot Tools"), this);
     toolbar->setIconSize(QSize(16, 16));
 
-    cursorAction = toolbar->addAction("Show Cursor");
+    cursorAction = toolbar->addAction(tr("Show Cursor"));
     cursorAction->setCheckable(true);
     cursorAction->setChecked(false);
-    cursorAction->setToolTip("Toggle crosshair cursor that shows values at mouse position");
+    cursorAction->setToolTip(tr("Toggle crosshair cursor that shows values at mouse position"));
     connect(cursorAction, &QAction::toggled, this, &PlotArea::toggleCursor);
 
-    legendAction = toolbar->addAction("Show Legend");
+    legendAction = toolbar->addAction(tr("Show Legend"));
     legendAction->setCheckable(true);
     legendAction->setChecked(true);
-    legendAction->setToolTip("Toggle legend visibility");
+    legendAction->setToolTip(tr("Toggle legend visibility"));
     connect(legendAction, &QAction::toggled, this, &PlotArea::toggleLegend);
 
-    auto* fitAction = toolbar->addAction("Fit to Screen");
-    fitAction->setToolTip("Rescale both axes so the current data fills the view and clear any zoom");
+    auto* fitAction = toolbar->addAction(tr("Fit to Screen"));
+    fitAction->setToolTip(tr("Rescale both axes so the current data fills the view and clear any zoom"));
     connect(fitAction, &QAction::triggered, this, &PlotArea::fitToScreen);
 
-    highlighterAction = toolbar->addAction("Highlight Mode");
+    highlighterAction = toolbar->addAction(tr("Highlight Mode"));
     highlighterAction->setCheckable(true);
     highlighterAction->setChecked(false);
-    highlighterAction->setToolTip("Left-click to add highlight, double-click to remove nearest");
+    highlighterAction->setToolTip(tr("Left-click to add highlight, double-click to remove nearest"));
     connect(highlighterAction, &QAction::toggled, this, &PlotArea::toggleHighlighter);
 
     toolbar->addSeparator();
 
-    insertTextAction = toolbar->addAction("Insert Text");
+    insertTextAction = toolbar->addAction(tr("Insert Text"));
     insertTextAction->setCheckable(true);
     insertTextAction->setChecked(false);
-    insertTextAction->setToolTip("Click on plot to place text from comment box");
+    insertTextAction->setToolTip(tr("Click on plot to place text from comment box"));
     connect(insertTextAction, &QAction::toggled, this, [this](bool checked) {
         if (checked) {
             // Find CommentBox via MainWindow
             auto* mainWin = window();
             CommentBox* commentBox = mainWin->findChild<CommentBox*>();
             if (!commentBox) {
-                QMessageBox::warning(this, "Error", "Comment box not found.");
+                QMessageBox::warning(this, tr("Error"), tr("Comment box not found."));
                 insertTextAction->setChecked(false);
                 return;
             }
             QString text = commentBox->getComments();
             if (text.trimmed().isEmpty()) {
-                QMessageBox::warning(this, "No Text", "Please enter text in the Comments box first.");
+                QMessageBox::warning(this, tr("No Text"), tr("Please enter text in the Comments box first."));
                 insertTextAction->setChecked(false);
                 return;
             }
@@ -188,14 +188,14 @@ void PlotArea::createToolbar()
         }
     });
 
-    clearTextsAction = toolbar->addAction("Clear All Texts");
-    clearTextsAction->setToolTip("Remove all floating text boxes from plot");
+    clearTextsAction = toolbar->addAction(tr("Clear All Texts"));
+    clearTextsAction->setToolTip(tr("Remove all floating text boxes from plot"));
     connect(clearTextsAction, &QAction::triggered, this, &PlotArea::clearAllTexts);
 
     toolbar->addSeparator();
 
-    auto* clearHighlightsAction = toolbar->addAction("Clear Highlights");
-    clearHighlightsAction->setToolTip("Remove all highlight lines");
+    auto* clearHighlightsAction = toolbar->addAction(tr("Clear Highlights"));
+    clearHighlightsAction->setToolTip(tr("Remove all highlight lines"));
     connect(clearHighlightsAction, &QAction::triggered, this, [this]() {
         saveState();
         clearHighlights();
@@ -203,34 +203,34 @@ void PlotArea::createToolbar()
 
     toolbar->addSeparator();
 
-    undoAction = toolbar->addAction("Undo");
-    undoAction->setToolTip("Undo last action (Ctrl+Z)");
+    undoAction = toolbar->addAction(tr("Undo"));
+    undoAction->setToolTip(tr("Undo last action (Ctrl+Z)"));
     undoAction->setEnabled(false);
     connect(undoAction, &QAction::triggered, this, &PlotArea::undoLastAction);
 
-    redoAction = toolbar->addAction("Redo");
-    redoAction->setToolTip("Redo last action (Ctrl+Y)");
+    redoAction = toolbar->addAction(tr("Redo"));
+    redoAction->setToolTip(tr("Redo last action (Ctrl+Y)"));
     redoAction->setEnabled(false);
     connect(redoAction, &QAction::triggered, this, &PlotArea::redoLastAction);
 
     toolbar->addSeparator();
 
     // --- Partitioning ---
-    partitionAction = toolbar->addAction("Partition Mode");
+    partitionAction = toolbar->addAction(tr("Partition Mode"));
     partitionAction->setCheckable(true);
     partitionAction->setChecked(false);
-    partitionAction->setToolTip("Left-click to add a vertical divider, double-click to remove nearest");
+    partitionAction->setToolTip(tr("Left-click to add a vertical divider, double-click to remove nearest"));
     connect(partitionAction, &QAction::toggled, this, &PlotArea::togglePartitionMode);
 
     orientCombo = new QComboBox(toolbar);
-    orientCombo->addItems({"Vertical", "Horizontal"});
-    orientCombo->setToolTip("Orientation of dividers added while Partition Mode is on");
+    orientCombo->addItems({tr("Vertical"), tr("Horizontal")});
+    orientCombo->setToolTip(tr("Orientation of dividers added while Partition Mode is on"));
     toolbar->addWidget(orientCombo);
     connect(orientCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int idx) { partitionHorizontal = (idx == 1); });
 
-    auto* clearPartitionsAction = toolbar->addAction("Clear Partitions");
-    clearPartitionsAction->setToolTip("Remove all partition dividers (both orientations)");
+    auto* clearPartitionsAction = toolbar->addAction(tr("Clear Partitions"));
+    clearPartitionsAction->setToolTip(tr("Remove all partition dividers (both orientations)"));
     connect(clearPartitionsAction, &QAction::triggered, this, [this]() {
         if (partitionDividers.isEmpty() && partitionDividersH.isEmpty())
             return;
@@ -240,25 +240,25 @@ void PlotArea::createToolbar()
         emit partitionDividersHChanged(partitionDividersH);
     });
 
-    auto* exportSegmentAction = toolbar->addAction("Export Segment");
-    exportSegmentAction->setToolTip("Export the data of the currently selected partition to CSV (opens in Excel)");
+    auto* exportSegmentAction = toolbar->addAction(tr("Export Segment"));
+    exportSegmentAction->setToolTip(tr("Export the data of the currently selected partition to CSV (opens in Excel)"));
     connect(exportSegmentAction, &QAction::triggered, this, [this]() {
         emit exportSegmentRequested();
     });
 
-    toolbar->addWidget(new QLabel("  Branch:", toolbar));
+    toolbar->addWidget(new QLabel(tr("  Branch:"), toolbar));
     branchCombo = new QComboBox(toolbar);
-    branchCombo->addItems({"All", "Upstream", "Downstream"});
-    branchCombo->setToolTip("Select forward (upstream) or reverse (downstream) branch of a loop");
+    branchCombo->addItems({tr("All"), tr("Upstream"), tr("Downstream")});
+    branchCombo->setToolTip(tr("Select forward (upstream) or reverse (downstream) branch of a loop"));
     branchCombo->setEnabled(false);
     toolbar->addWidget(branchCombo);
     connect(branchCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int idx) { emit branchChanged(idx); });
 
-    toolbar->addWidget(new QLabel("  X Seg:", toolbar));
+    toolbar->addWidget(new QLabel(tr("  X Seg:"), toolbar));
     partitionCombo = new QComboBox(toolbar);
-    partitionCombo->addItem("All");
-    partitionCombo->setToolTip("Select a single vertical (x) partition segment to analyse");
+    partitionCombo->addItem(tr("All"));
+    partitionCombo->setToolTip(tr("Select a single vertical (x) partition segment to analyse"));
     toolbar->addWidget(partitionCombo);
     connect(partitionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int idx) {
@@ -266,10 +266,10 @@ void PlotArea::createToolbar()
         emit partitionSegmentChanged(idx <= 0 ? -1 : idx - 1);
     });
 
-    toolbar->addWidget(new QLabel("  Y Seg:", toolbar));
+    toolbar->addWidget(new QLabel(tr("  Y Seg:"), toolbar));
     partitionComboY = new QComboBox(toolbar);
-    partitionComboY->addItem("All");
-    partitionComboY->setToolTip("Select a single horizontal (y) partition band to analyse");
+    partitionComboY->addItem(tr("All"));
+    partitionComboY->setToolTip(tr("Select a single horizontal (y) partition band to analyse"));
     toolbar->addWidget(partitionComboY);
     connect(partitionComboY, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int idx) {
@@ -283,24 +283,24 @@ void PlotArea::createXAxisControls()
     auto* layout = new QHBoxLayout(container);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    auto* label = new QLabel("X Range:", container);
+    auto* label = new QLabel(tr("X Range:"), container);
     label->setStyleSheet("font-weight: bold;");
     layout->addWidget(label);
 
     xMinInput = new QLineEdit(container);
-    xMinInput->setPlaceholderText("Min");
+    xMinInput->setPlaceholderText(tr("Min"));
     xMinInput->setMaximumWidth(80);
     layout->addWidget(xMinInput);
 
-    auto* toLabel = new QLabel("to", container);
+    auto* toLabel = new QLabel(tr("to"), container);
     layout->addWidget(toLabel);
 
     xMaxInput = new QLineEdit(container);
-    xMaxInput->setPlaceholderText("Max");
+    xMaxInput->setPlaceholderText(tr("Max"));
     xMaxInput->setMaximumWidth(80);
     layout->addWidget(xMaxInput);
 
-    xApplyButton = new QPushButton("Apply", container);
+    xApplyButton = new QPushButton(tr("Apply"), container);
     xApplyButton->setStyleSheet(R"(
         QPushButton {
             background-color: #27ae60;
@@ -313,7 +313,7 @@ void PlotArea::createXAxisControls()
     )");
     layout->addWidget(xApplyButton);
 
-    xResetButton = new QPushButton("Reset", container);
+    xResetButton = new QPushButton(tr("Reset"), container);
     xResetButton->setStyleSheet(R"(
         QPushButton {
             background-color: #95a5a6;
@@ -338,7 +338,7 @@ void PlotArea::createXAxisControls()
             saveState();
             xAxis->setRange(minVal, maxVal);
         } else {
-            QMessageBox::warning(this, "Invalid Range", "Please enter valid min and max values.");
+            QMessageBox::warning(this, tr("Invalid Range"), tr("Please enter valid min and max values."));
         }
     });
 
@@ -829,10 +829,10 @@ void PlotArea::exportPlot(const QString& fileName)
         painter.end();
 
         if (!combined.save(path))
-            QMessageBox::critical(this, "Export Error", "Failed to save plot image.");
+            QMessageBox::critical(this, tr("Export Error"), tr("Failed to save plot image."));
     } else {
         if (!plotImage.save(path))
-            QMessageBox::critical(this, "Export Error", "Failed to save plot image.");
+            QMessageBox::critical(this, tr("Export Error"), tr("Failed to save plot image."));
     }
 
     // Restore cursor
@@ -1131,6 +1131,55 @@ void PlotArea::clearPartitions()
     rebuildPartitionComboY();
 }
 
+void PlotArea::applyPartitionState(const QVector<double>& xs, const QVector<double>& ys,
+                                   int branchIndex, int xSegment, int ySegment)
+{
+    // Restore the divider values directly (they were already snapped to real
+    // data points when first created, so no re-snapping is needed).
+    partitionDividers = xs;
+    std::sort(partitionDividers.begin(), partitionDividers.end());
+    partitionDividersH = ys;
+    std::sort(partitionDividersH.begin(), partitionDividersH.end());
+
+    updatePartitionLines();
+    rebuildPartitionCombo();
+    rebuildPartitionComboY();
+
+    // Push the dividers to the owner so the active subset is recomputed.
+    emit partitionDividersChanged(partitionDividers);
+    emit partitionDividersHChanged(partitionDividersH);
+
+    // Restore the branch selection.
+    if (branchCombo && branchIndex >= 0 && branchIndex < branchCombo->count()) {
+        branchCombo->blockSignals(true);
+        branchCombo->setCurrentIndex(branchIndex);
+        branchCombo->blockSignals(false);
+        emit branchChanged(branchIndex);
+    }
+
+    // Restore the selected x-segment (combo index 0 == "All").
+    if (partitionCombo) {
+        int idx = (xSegment < 0) ? 0 : xSegment + 1;
+        if (idx >= 0 && idx < partitionCombo->count()) {
+            partitionCombo->blockSignals(true);
+            partitionCombo->setCurrentIndex(idx);
+            partitionCombo->blockSignals(false);
+            emit partitionSegmentChanged(idx <= 0 ? -1 : idx - 1);
+        }
+    }
+
+    // Restore the selected y-band.
+    if (partitionComboY) {
+        int idx = (ySegment < 0) ? 0 : ySegment + 1;
+        if (idx >= 0 && idx < partitionComboY->count()) {
+            partitionComboY->blockSignals(true);
+            partitionComboY->setCurrentIndex(idx);
+            partitionComboY->blockSignals(false);
+            emit partitionYSegmentChanged(idx <= 0 ? -1 : idx - 1);
+        }
+    }
+}
+
 void PlotArea::updatePartitionLines()
 {
     if (!chart || !chart->scene())
@@ -1221,12 +1270,12 @@ void PlotArea::rebuildPartitionCombo()
     int prev = partitionCombo->currentIndex();
     partitionCombo->blockSignals(true);
     partitionCombo->clear();
-    partitionCombo->addItem("All");
+    partitionCombo->addItem(tr("All"));
     int segments = partitionDividers.size() + 1;
     if (partitionDividers.isEmpty())
         segments = 0; // no dividers -> only "All"
     for (int i = 0; i < segments; ++i)
-        partitionCombo->addItem(QString("Segment %1").arg(i + 1));
+        partitionCombo->addItem(tr("Segment %1").arg(i + 1));
 
     int target = (prev >= 0 && prev < partitionCombo->count()) ? prev : 0;
     partitionCombo->setCurrentIndex(target);
@@ -1247,10 +1296,10 @@ void PlotArea::rebuildPartitionComboY()
     int prev = partitionComboY->currentIndex();
     partitionComboY->blockSignals(true);
     partitionComboY->clear();
-    partitionComboY->addItem("All");
+    partitionComboY->addItem(tr("All"));
     int segments = partitionDividersH.isEmpty() ? 0 : partitionDividersH.size() + 1;
     for (int i = 0; i < segments; ++i)
-        partitionComboY->addItem(QString("Band %1").arg(i + 1));
+        partitionComboY->addItem(tr("Band %1").arg(i + 1));
 
     int target = (prev >= 0 && prev < partitionComboY->count()) ? prev : 0;
     partitionComboY->setCurrentIndex(target);
@@ -1520,7 +1569,7 @@ void PlotArea::addHighlight(double x)
 void PlotArea::removeNearestHighlight(double x)
 {
     if (highlightLines.isEmpty()) {
-        QMessageBox::information(this, "No Highlights", "There are no highlights to remove.");
+        QMessageBox::information(this, tr("No Highlights"), tr("There are no highlights to remove."));
         return;
     }
 
@@ -1635,12 +1684,12 @@ void PlotArea::cancelTextInsertion()
 void PlotArea::clearAllTexts()
 {
     if (floatingTextItems.isEmpty()) {
-        QMessageBox::information(this, "No Texts", "There are no text boxes to clear.");
+        QMessageBox::information(this, tr("No Texts"), tr("There are no text boxes to clear."));
         return;
     }
 
-    auto reply = QMessageBox::question(this, "Clear All Texts",
-        QString("Are you sure you want to remove all %1 text boxes?").arg(floatingTextItems.size()),
+    auto reply = QMessageBox::question(this, tr("Clear All Texts"),
+        tr("Are you sure you want to remove all %1 text boxes?").arg(floatingTextItems.size()),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
 
     if (reply != QMessageBox::Yes)
@@ -1664,7 +1713,7 @@ void PlotArea::editTextItem(EditableTextItem* item)
 
     QString currentText = item->toPlainText();
     bool ok;
-    QString newText = QInputDialog::getText(this, "Edit Text", "Enter new text:",
+    QString newText = QInputDialog::getText(this, tr("Edit Text"), tr("Enter new text:"),
                                              QLineEdit::Normal, currentText, &ok);
     if (!ok || newText.isEmpty())
         return;

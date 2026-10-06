@@ -15,6 +15,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QDateTime>
+#include <QMessageBox>
 
 PresetManager::PresetManager(MainWindow* mainWindow, QObject* parent)
     : QObject(parent)
@@ -96,6 +97,18 @@ QVariantMap PresetManager::captureCurrentSettings() const
     // Plot view
     s[QStringLiteral("showOriginal")] = mainWindow->rightPanel->plotArea->getShowOriginalState();
 
+    // Partitioning: divider lines + active branch and selected segments.
+    QVariantList partitionX, partitionY;
+    for (double v : mainWindow->partitionDividers)
+        partitionX.append(v);
+    for (double v : mainWindow->partitionDividersH)
+        partitionY.append(v);
+    s[QStringLiteral("partitionX")] = partitionX;
+    s[QStringLiteral("partitionY")] = partitionY;
+    s[QStringLiteral("activeBranch")] = mainWindow->activeBranch;
+    s[QStringLiteral("activePartition")] = mainWindow->activePartition;
+    s[QStringLiteral("activePartitionY")] = mainWindow->activePartitionY;
+
     return s;
 }
 
@@ -140,15 +153,87 @@ void PresetManager::applySettings(const QVariantMap& s)
     mainWindow->rightPanel->plotArea->setShowOriginalState(
         s.value(QStringLiteral("showOriginal")).toBool());
 
-    // Redraw with the applied options.
-    if (!mainWindow->df.isEmpty())
+    // Redraw with the applied options, then restore the partition configuration
+    // on top of the freshly drawn plot.
+    if (!mainWindow->df.isEmpty()) {
         mainWindow->updatePlot();
+
+        QVector<double> partitionX, partitionY;
+        for (const QVariant& v : s.value(QStringLiteral("partitionX")).toList())
+            partitionX.append(v.toDouble());
+        for (const QVariant& v : s.value(QStringLiteral("partitionY")).toList())
+            partitionY.append(v.toDouble());
+
+        // If the saved dividers don't fit the current data (the data doesn't
+        // cover those values), offer to recreate the SAME NUMBER of segments
+        // spread evenly across the data that IS available. When they do fit,
+        // apply them unchanged so the same segmentation is reproduced.
+        const auto& items = mainWindow->rightPanel->plotArea->plotItems;
+        if (!items.isEmpty()) {
+            fitDividersToData(partitionX, items.first().xData, QStringLiteral("X"));
+            fitDividersToData(partitionY, items.first().yData, QStringLiteral("Y"));
+        }
+
+        mainWindow->rightPanel->plotArea->applyPartitionState(
+            partitionX, partitionY,
+            s.value(QStringLiteral("activeBranch"), 0).toInt(),
+            s.value(QStringLiteral("activePartition"), -1).toInt(),
+            s.value(QStringLiteral("activePartitionY"), -1).toInt());
+    }
+}
+
+void PresetManager::fitDividersToData(QVector<double>& dividers,
+                                      const QVector<double>& data,
+                                      const QString& axisLabel)
+{
+    if (dividers.isEmpty() || data.isEmpty())
+        return;
+
+    double dataMin = data.first();
+    double dataMax = data.first();
+    for (double v : data) {
+        dataMin = qMin(dataMin, v);
+        dataMax = qMax(dataMax, v);
+    }
+    if (dataMax <= dataMin)
+        return;
+
+    // A divider "fits" when it lies inside the available data range.
+    bool allFit = true;
+    for (double d : dividers) {
+        if (d < dataMin || d > dataMax) {
+            allFit = false;
+            break;
+        }
+    }
+    if (allFit)
+        return;  // same data (or compatible) -> keep the exact saved segmentation
+
+    const int count = dividers.size();
+    const int segments = count + 1;
+    auto reply = QMessageBox::question(
+        mainWindow, QObject::tr("Partitions Don't Fit Data"),
+        QObject::tr("This preset defines %1 %2 segment(s), but its divider "
+                    "positions fall outside the current data range.\n\n"
+                    "Create %1 equal %2 segment(s) across the available data instead?")
+            .arg(segments).arg(axisLabel),
+        QMessageBox::Yes | QMessageBox::No);
+
+    if (reply == QMessageBox::Yes) {
+        // Spread `count` dividers evenly, producing `count + 1` equal segments.
+        QVector<double> fresh;
+        for (int i = 1; i <= count; ++i)
+            fresh.append(dataMin + (dataMax - dataMin) * i / segments);
+        dividers = fresh;
+    } else {
+        dividers.clear();  // skip partitioning for this axis
+    }
 }
 
 bool PresetManager::savePreset(const QString& name, QString* errorOut)
 {
     if (name.trimmed().isEmpty()) {
-        if (errorOut) *errorOut = QStringLiteral("Preset name cannot be empty.");
+        if (errorOut) *errorOut = tr("Preset name cannot be empty.");
         return false;
     }
 
@@ -160,7 +245,7 @@ bool PresetManager::savePreset(const QString& name, QString* errorOut)
 
     QFile file(presetFilePath(name));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        if (errorOut) *errorOut = QStringLiteral("Cannot write preset file: %1").arg(file.errorString());
+        if (errorOut) *errorOut = tr("Cannot write preset file: %1").arg(file.errorString());
         return false;
     }
     file.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
@@ -174,14 +259,14 @@ bool PresetManager::loadPreset(const QString& name, QString* errorOut)
 {
     QFile file(presetFilePath(name));
     if (!file.open(QIODevice::ReadOnly)) {
-        if (errorOut) *errorOut = QStringLiteral("Cannot open preset '%1': %2").arg(name, file.errorString());
+        if (errorOut) *errorOut = tr("Cannot open preset '%1': %2").arg(name, file.errorString());
         return false;
     }
     const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     file.close();
 
     if (!doc.isObject()) {
-        if (errorOut) *errorOut = QStringLiteral("Preset '%1' is not valid.").arg(name);
+        if (errorOut) *errorOut = tr("Preset '%1' is not valid.").arg(name);
         return false;
     }
 
@@ -194,11 +279,11 @@ bool PresetManager::deletePreset(const QString& name, QString* errorOut)
 {
     QFile file(presetFilePath(name));
     if (!file.exists()) {
-        if (errorOut) *errorOut = QStringLiteral("Preset '%1' does not exist.").arg(name);
+        if (errorOut) *errorOut = tr("Preset '%1' does not exist.").arg(name);
         return false;
     }
     if (!file.remove()) {
-        if (errorOut) *errorOut = QStringLiteral("Cannot delete preset '%1': %2").arg(name, file.errorString());
+        if (errorOut) *errorOut = tr("Cannot delete preset '%1': %2").arg(name, file.errorString());
         return false;
     }
     updateIndex();

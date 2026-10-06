@@ -9,7 +9,7 @@
 #include <QMessageBox>
 
 CurveFittingWidget::CurveFittingWidget(QWidget* parent)
-    : QGroupBox("Curve Fitting", parent)
+    : QGroupBox(tr("Curve Fitting"), parent)
 {
     setupUi();
 }
@@ -19,22 +19,24 @@ void CurveFittingWidget::setupUi()
     auto* layout = new QVBoxLayout(this);
 
     // Fit type selection
-    auto* typeLabel = new QLabel("Fit Type:", this);
+    auto* typeLabel = new QLabel(tr("Fit Type:"), this);
     typeLabel->setStyleSheet("font-weight: bold;");
     layout->addWidget(typeLabel);
 
     fitType = new QComboBox(this);
+    // Note: these identifiers are compared by text and stored in presets,
+    // so they are intentionally left untranslated.
     fitType->addItems({"Polynomial", "Exponential"});
-    fitType->setToolTip("Select curve fitting method");
+    fitType->setToolTip(tr("Select curve fitting method"));
     layout->addWidget(fitType);
 
     // Polynomial degree
     auto* degreeLayout = new QHBoxLayout();
-    auto* degreeLabel = new QLabel("Polynomial Degree:", this);
+    auto* degreeLabel = new QLabel(tr("Polynomial Degree:"), this);
     degreeSpinbox = new QSpinBox(this);
     degreeSpinbox->setRange(1, 15);
     degreeSpinbox->setValue(1);
-    degreeSpinbox->setToolTip("Degree of polynomial (1=linear, 2=quadratic, etc.)");
+    degreeSpinbox->setToolTip(tr("Degree of polynomial (1=linear, 2=quadratic, etc.)"));
     degreeLayout->addWidget(degreeLabel);
     degreeLayout->addWidget(degreeSpinbox);
     layout->addLayout(degreeLayout);
@@ -42,7 +44,7 @@ void CurveFittingWidget::setupUi()
     // Buttons
     auto* buttonLayout = new QHBoxLayout();
 
-    applyFitButton = new QPushButton("Apply Fit", this);
+    applyFitButton = new QPushButton(tr("Apply Fit"), this);
     applyFitButton->setStyleSheet(R"(
         QPushButton {
             background-color: #27ae60;
@@ -60,7 +62,7 @@ void CurveFittingWidget::setupUi()
         }
     )");
 
-    removeFitButton = new QPushButton("Remove Fit", this);
+    removeFitButton = new QPushButton(tr("Remove Fit"), this);
     removeFitButton->setStyleSheet(R"(
         QPushButton {
             background-color: #e74c3c;
@@ -107,7 +109,7 @@ void CurveFittingWidget::onApplyFit()
         return;
 
     if (mainWin->filteredDf.isEmpty()) {
-        QMessageBox::warning(this, "No Data", "Please load data before applying curve fitting.");
+        QMessageBox::warning(this, tr("No Data"), tr("Please load data before applying curve fitting."));
         return;
     }
 
@@ -116,7 +118,7 @@ void CurveFittingWidget::onApplyFit()
     QStringList yCols = mainWin->leftPanel->axisSelection->yColumns();
 
     if (xCol.isEmpty() || yCols.isEmpty()) {
-        QMessageBox::warning(this, "No Selection", "Please select X and Y axis columns first.");
+        QMessageBox::warning(this, tr("No Selection"), tr("Please select X and Y axis columns first."));
         return;
     }
 
@@ -129,7 +131,7 @@ void CurveFittingWidget::onApplyFit()
     QVector<double> yData = subset.column(yCol);
 
     if (xData.isEmpty() || yData.isEmpty()) {
-        QMessageBox::warning(this, "No Data", "Selected columns contain no data.");
+        QMessageBox::warning(this, tr("No Data"), tr("Selected columns contain no data."));
         return;
     }
 
@@ -141,8 +143,8 @@ void CurveFittingWidget::onApplyFit()
 
         // Warning for high degrees
         if (degree > 9) {
-            auto reply = QMessageBox::warning(this, "High Degree Warning",
-                QString("Polynomial degree %1 may cause numerical instability and overfitting. "
+            auto reply = QMessageBox::warning(this, tr("High Degree Warning"),
+                tr("Polynomial degree %1 may cause numerical instability and overfitting. "
                         "Continue?").arg(degree),
                 QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
             if (reply == QMessageBox::No)
@@ -160,8 +162,8 @@ void CurveFittingWidget::onApplyFit()
         xData, yData, result.fitFunction, result.equation, selectedType, xCol, yCol);
 
     // Show result with R-squared
-    QMessageBox::information(this, "Fit Applied",
-        QString("Applied %1 fit:\n\n%2\n\nR-squared: %3")
+    QMessageBox::information(this, tr("Fit Applied"),
+        tr("Applied %1 fit:\n\n%2\n\nR-squared: %3")
             .arg(selectedType)
             .arg(result.equation)
             .arg(result.rSquared, 0, 'f', 4));

@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVariantMap>
+#include <QVector>
 
 class MainWindow;
 
@@ -40,6 +41,12 @@ public:
     bool deletePreset(const QString& name, QString* errorOut = nullptr);
 
 private:
+    // If the saved dividers fall outside the available data range, ask the user
+    // whether to recreate the same number of evenly spaced segments across the
+    // current data; otherwise leave the dividers untouched.
+    void fitDividersToData(QVector<double>& dividers, const QVector<double>& data,
+                           const QString& axisLabel);
+
     QString presetFilePath(const QString& name) const;
     QString indexFilePath() const;
     void updateIndex();  // rewrite index.json from the preset files on disk

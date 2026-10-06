@@ -8,7 +8,7 @@ SheetSelectionDialog::SheetSelectionDialog(const QStringList& sheets, QWidget* p
 
 void SheetSelectionDialog::setupUi(const QStringList& sheets)
 {
-    setWindowTitle("Select Sheet");
+    setWindowTitle(tr("Select Sheet"));
     setMinimumWidth(300);
     setModal(true);
 
@@ -16,7 +16,7 @@ void SheetSelectionDialog::setupUi(const QStringList& sheets)
 
     // Info label
     auto* infoLabel = new QLabel(
-        "The selected file contains multiple sheets.\nPlease select the sheet to load:", this);
+        tr("The selected file contains multiple sheets.\nPlease select the sheet to load:"), this);
     infoLabel->setStyleSheet("font-size: 10pt; padding: 5px;");
     infoLabel->setWordWrap(true);
     layout->addWidget(infoLabel);
@@ -24,7 +24,7 @@ void SheetSelectionDialog::setupUi(const QStringList& sheets)
     // Sheet selection combo
     sheetCombo = new QComboBox(this);
     sheetCombo->addItems(sheets);
-    sheetCombo->setToolTip("Select a sheet to load");
+    sheetCombo->setToolTip(tr("Select a sheet to load"));
     sheetCombo->setStyleSheet(R"(
         QComboBox {
             padding: 5px;

@@ -35,7 +35,7 @@ static Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
-    setWindowTitle("Inline Analytical Tool");
+    setWindowTitle(tr("Inline Analytical Tool"));
     setGeometry(100, 100, 1600, 900);
 
     auto* centralWidget = new QWidget(this);

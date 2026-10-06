@@ -5,7 +5,7 @@
 #include <limits>
 
 DataFilter::DataFilter(QWidget* parent)
-    : QGroupBox("Data Filter", parent)
+    : QGroupBox(tr("Data Filter"), parent)
 {
     setupUi();
 }
@@ -15,32 +15,32 @@ void DataFilter::setupUi()
     auto* layout = new QVBoxLayout(this);
 
     // Filter column selection
-    auto* columnLabel = new QLabel("Filter Column:", this);
+    auto* columnLabel = new QLabel(tr("Filter Column:"), this);
     columnLabel->setStyleSheet("font-weight: bold;");
     layout->addWidget(columnLabel);
 
     filterColumn = new QComboBox(this);
-    filterColumn->setToolTip("Select column to filter");
+    filterColumn->setToolTip(tr("Select column to filter"));
     layout->addWidget(filterColumn);
 
     // Min/Max value inputs
     auto* rangeLayout = new QFormLayout();
 
     minValue = new QLineEdit(this);
-    minValue->setPlaceholderText("Minimum value");
-    minValue->setToolTip("Enter minimum value (leave empty for no lower bound)");
-    rangeLayout->addRow("Min Value:", minValue);
+    minValue->setPlaceholderText(tr("Minimum value"));
+    minValue->setToolTip(tr("Enter minimum value (leave empty for no lower bound)"));
+    rangeLayout->addRow(tr("Min Value:"), minValue);
 
     maxValue = new QLineEdit(this);
-    maxValue->setPlaceholderText("Maximum value");
-    maxValue->setToolTip("Enter maximum value (leave empty for no upper bound)");
-    rangeLayout->addRow("Max Value:", maxValue);
+    maxValue->setPlaceholderText(tr("Maximum value"));
+    maxValue->setToolTip(tr("Enter maximum value (leave empty for no upper bound)"));
+    rangeLayout->addRow(tr("Max Value:"), maxValue);
 
     layout->addLayout(rangeLayout);
 
     // Apply button
-    applyFilter = new QPushButton("Apply Filter", this);
-    applyFilter->setToolTip("Apply the data filter");
+    applyFilter = new QPushButton(tr("Apply Filter"), this);
+    applyFilter->setToolTip(tr("Apply the data filter"));
     applyFilter->setStyleSheet(R"(
         QPushButton {
             background-color: #3498db;
@@ -103,7 +103,7 @@ void DataFilter::onApplyClicked()
     if (!minValue->text().trimmed().isEmpty()) {
         minVal = minValue->text().toDouble(&minOk);
         if (!minOk) {
-            QMessageBox::warning(this, "Invalid Input", "Minimum value is not a valid number.");
+            QMessageBox::warning(this, tr("Invalid Input"), tr("Minimum value is not a valid number."));
             return;
         }
     }
@@ -111,13 +111,13 @@ void DataFilter::onApplyClicked()
     if (!maxValue->text().trimmed().isEmpty()) {
         maxVal = maxValue->text().toDouble(&maxOk);
         if (!maxOk) {
-            QMessageBox::warning(this, "Invalid Input", "Maximum value is not a valid number.");
+            QMessageBox::warning(this, tr("Invalid Input"), tr("Maximum value is not a valid number."));
             return;
         }
     }
 
     if (minVal > maxVal) {
-        QMessageBox::warning(this, "Invalid Range", "Minimum value cannot be greater than maximum value.");
+        QMessageBox::warning(this, tr("Invalid Range"), tr("Minimum value cannot be greater than maximum value."));
         return;
     }
 

@@ -3,6 +3,12 @@
 #include "sessionmanager.h"
 
 #include <QAction>
+#include <QActionGroup>
+#include <QMenu>
+#include <QMessageBox>
+#include <QProcess>
+#include <QSettings>
+#include <QApplication>
 #include <QLoggingCategory>
 
 static Q_LOGGING_CATEGORY(lcMenuBar, "app.menubar")
@@ -52,6 +58,48 @@ MenuBar::MenuBar(QWidget* parent)
 
     // Edit menu (actions added later via addEditActions)
     editMenu = addMenu(tr("Edit"));
+
+    // Settings menu
+    settingsMenu = addMenu(tr("Settings"));
+    auto* languageMenu = settingsMenu->addMenu(tr("Language"));
+
+    const QString currentLang = QSettings().value("language", "de").toString();
+    auto* langGroup = new QActionGroup(this);
+    langGroup->setExclusive(true);
+
+    auto* germanAction = new QAction(tr("German"), this);
+    germanAction->setCheckable(true);
+    germanAction->setChecked(currentLang == "de");
+    connect(germanAction, &QAction::triggered, this, [this]() { changeLanguage("de"); });
+    langGroup->addAction(germanAction);
+    languageMenu->addAction(germanAction);
+
+    auto* englishAction = new QAction(tr("English"), this);
+    englishAction->setCheckable(true);
+    englishAction->setChecked(currentLang == "en");
+    connect(englishAction, &QAction::triggered, this, [this]() { changeLanguage("en"); });
+    langGroup->addAction(englishAction);
+    languageMenu->addAction(englishAction);
+}
+
+void MenuBar::changeLanguage(const QString& code)
+{
+    QSettings settings;
+    if (settings.value("language", "de").toString() == code)
+        return;  // no change
+
+    settings.setValue("language", code);
+
+    auto reply = QMessageBox::question(
+        mainWindow, tr("Language Changed"),
+        tr("The language change will take effect after the application is "
+           "restarted.\n\nRestart now?"),
+        QMessageBox::Yes | QMessageBox::No);
+
+    if (reply == QMessageBox::Yes) {
+        QProcess::startDetached(qApp->applicationFilePath(), qApp->arguments());
+        qApp->quit();
+    }
 }
 
 void MenuBar::addEditActions(QAction* smoothing, QAction* comment,

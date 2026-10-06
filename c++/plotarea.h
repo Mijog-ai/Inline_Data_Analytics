@@ -84,6 +84,12 @@ public:
     QVector<double> partitionXs() const { return partitionDividers; }
     QVector<double> partitionYs() const { return partitionDividersH; }
 
+    // Restore a complete partition configuration (used when loading a preset):
+    // the vertical/horizontal divider values, the active branch (0=All,
+    // 1=Upstream, 2=Downstream) and the selected x/y segment (-1 = All).
+    void applyPartitionState(const QVector<double>& xs, const QVector<double>& ys,
+                             int branchIndex, int xSegment, int ySegment);
+
 signals:
     void partitionDividersChanged(const QVector<double>& xs);   // vertical divider x-values
     void partitionDividersHChanged(const QVector<double>& ys);  // horizontal divider y-values

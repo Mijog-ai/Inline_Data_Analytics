@@ -26,8 +26,8 @@ SessionManager::SessionManager(MainWindow* mainWindow, QObject* parent)
 void SessionManager::saveSession()
 {
     QString fileName = QFileDialog::getSaveFileName(
-        mainWindow, "Save Session", QString(),
-        "Inline Analytics Files (*.inlingh)");
+        mainWindow, tr("Save Session"), QString(),
+        tr("Inline Analytics Files (*.inlingh)"));
 
     if (fileName.isEmpty())
         return;
@@ -35,15 +35,15 @@ void SessionManager::saveSession()
     if (!fileName.endsWith(".inlingh"))
         fileName += ".inlingh";
 
-    QProgressDialog progress("Saving session...", "Cancel", 0, 100, mainWindow);
+    QProgressDialog progress(tr("Saving session..."), tr("Cancel"), 0, 100, mainWindow);
     progress.setWindowModality(Qt::WindowModal);
     progress.setMinimumDuration(0);
     progress.setValue(0);
 
     QFile file(fileName);
     if (!file.open(QIODevice::WriteOnly)) {
-        QMessageBox::critical(mainWindow, "Error",
-            QString("Cannot open file for writing: %1").arg(file.errorString()));
+        QMessageBox::critical(mainWindow, tr("Error"),
+            tr("Cannot open file for writing: %1").arg(file.errorString()));
         return;
     }
 
@@ -112,27 +112,27 @@ void SessionManager::saveSession()
     progress.setValue(100);
 
     mainWindow->unsavedChanges = false;
-    QMessageBox::information(mainWindow, "Success", "Session saved successfully!");
+    QMessageBox::information(mainWindow, tr("Success"), tr("Session saved successfully!"));
 }
 
 void SessionManager::loadSession()
 {
     QString fileName = QFileDialog::getOpenFileName(
-        mainWindow, "Load Session", QString(),
-        "Inline Analytics Files (*.inlingh)");
+        mainWindow, tr("Load Session"), QString(),
+        tr("Inline Analytics Files (*.inlingh)"));
 
     if (fileName.isEmpty())
         return;
 
-    QProgressDialog progress("Loading session...", "Cancel", 0, 100, mainWindow);
+    QProgressDialog progress(tr("Loading session..."), tr("Cancel"), 0, 100, mainWindow);
     progress.setWindowModality(Qt::WindowModal);
     progress.setMinimumDuration(0);
     progress.setValue(0);
 
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(mainWindow, "Error",
-            QString("Cannot open file: %1").arg(file.errorString()));
+        QMessageBox::critical(mainWindow, tr("Error"),
+            tr("Cannot open file: %1").arg(file.errorString()));
         return;
     }
 
@@ -145,14 +145,14 @@ void SessionManager::loadSession()
     in >> magic >> version;
 
     if (magic != SESSION_MAGIC) {
-        QMessageBox::critical(mainWindow, "Error", "Invalid session file format.");
+        QMessageBox::critical(mainWindow, tr("Error"), tr("Invalid session file format."));
         file.close();
         return;
     }
 
     if (version > SESSION_VERSION) {
-        QMessageBox::critical(mainWindow, "Error",
-            "Session file was created with a newer version of the application.");
+        QMessageBox::critical(mainWindow, tr("Error"),
+            tr("Session file was created with a newer version of the application."));
         file.close();
         return;
     }
@@ -243,7 +243,7 @@ void SessionManager::loadSession()
 
     progress.setValue(100);
     mainWindow->unsavedChanges = false;
-    QMessageBox::information(mainWindow, "Success", "Session loaded successfully!");
+    QMessageBox::information(mainWindow, tr("Success"), tr("Session loaded successfully!"));
 }
 
 void SessionManager::newSession()
@@ -251,8 +251,8 @@ void SessionManager::newSession()
     // Check for unsaved changes
     if (mainWindow->unsavedChanges) {
         auto reply = QMessageBox::question(
-            mainWindow, "Save Changes?",
-            "Do you want to save the current session before creating a new one?",
+            mainWindow, tr("Save Changes?"),
+            tr("Do you want to save the current session before creating a new one?"),
             QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
 
         if (reply == QMessageBox::Yes) {
@@ -271,5 +271,5 @@ void SessionManager::newSession()
     // Reset UI
     mainWindow->resetUi();
 
-    QMessageBox::information(mainWindow, "New Session", "A new session has been created.");
+    QMessageBox::information(mainWindow, tr("New Session"), tr("A new session has been created."));
 }

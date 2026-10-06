@@ -52,6 +52,7 @@ set(PROJECT_SOURCES
     presetmanager.cpp
     sheetselectiondialog.h
     sheetselectiondialog.cpp
+    resources.qrc
 )
 
 qt_add_executable(InlineDataAnalytics ${PROJECT_SOURCES})

@@ -2,7 +2,7 @@
 #include <QLabel>
 
 CommentBox::CommentBox(QWidget* parent)
-    : QGroupBox("Comments", parent)
+    : QGroupBox(tr("Comments"), parent)
 {
     setupUi();
 }
@@ -11,13 +11,13 @@ void CommentBox::setupUi()
 {
     auto* layout = new QVBoxLayout(this);
 
-    auto* label = new QLabel("Notes / Comments:", this);
+    auto* label = new QLabel(tr("Notes / Comments:"), this);
     label->setStyleSheet("font-weight: bold;");
     layout->addWidget(label);
 
     textEdit = new QTextEdit(this);
-    textEdit->setPlaceholderText("Enter your comments or notes here...");
-    textEdit->setToolTip("Add comments about the data or analysis");
+    textEdit->setPlaceholderText(tr("Enter your comments or notes here..."));
+    textEdit->setToolTip(tr("Add comments about the data or analysis"));
     textEdit->setMaximumHeight(100);
     textEdit->setStyleSheet(R"(
         QTextEdit {

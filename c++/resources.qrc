@@ -1,0 +1,7 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/i18n">
+        <file alias="app_de.qm">i18n/app_de.qm</file>
+        <file alias="qtbase_de.qm">i18n/qtbase_de.qm</file>
+    </qresource>
+</RCC>
