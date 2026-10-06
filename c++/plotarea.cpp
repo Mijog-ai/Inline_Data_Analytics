@@ -790,24 +790,48 @@ void PlotArea::exportPlot(const QString& fileName)
     }
     QApplication::processEvents();
 
-    QPixmap plotPixmap = chartView->grab();
+    // Render at a higher resolution than the on-screen widget so the exported
+    // image is crisp. The chart is vector content (lines + text), so rendering
+    // the widget through QPainter at a larger scale re-rasterizes everything at
+    // full quality instead of upscaling a low-res screen grab.
+    const qreal exportScale = 3.0;
+
+    auto renderHiRes = [exportScale](QWidget* w) -> QImage {
+        const QSize target = w->size() * exportScale;
+        QImage image(target, QImage::Format_ARGB32);
+        image.setDevicePixelRatio(1.0);
+        image.fill(Qt::white);
+
+        QPainter painter(&image);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setRenderHint(QPainter::TextAntialiasing, true);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        painter.scale(exportScale, exportScale);
+        w->render(&painter, QPoint(), QRegion(), QWidget::DrawChildren);
+        painter.end();
+        return image;
+    };
+
+    QImage plotImage = renderHiRes(chartView);
 
     // Combine with legend if visible
     if (showLegend && legendWidget->isVisible()) {
-        QPixmap legendPixmap = legendWidget->grab();
-        int totalHeight = plotPixmap.height() + legendPixmap.height();
-        QPixmap combined(plotPixmap.width(), totalHeight);
+        QImage legendImage = renderHiRes(legendWidget);
+
+        const int width = qMax(plotImage.width(), legendImage.width());
+        const int totalHeight = plotImage.height() + legendImage.height();
+        QImage combined(width, totalHeight, QImage::Format_ARGB32);
         combined.fill(Qt::white);
 
         QPainter painter(&combined);
-        painter.drawPixmap(0, 0, plotPixmap);
-        painter.drawPixmap(0, plotPixmap.height(), legendPixmap);
+        painter.drawImage(0, 0, plotImage);
+        painter.drawImage(0, plotImage.height(), legendImage);
         painter.end();
 
         if (!combined.save(path))
             QMessageBox::critical(this, "Export Error", "Failed to save plot image.");
     } else {
-        if (!plotPixmap.save(path))
+        if (!plotImage.save(path))
             QMessageBox::critical(this, "Export Error", "Failed to save plot image.");
     }
 

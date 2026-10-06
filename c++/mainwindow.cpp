@@ -11,6 +11,7 @@
 #include "plotarea.h"
 #include "statisticsarea.h"
 #include "sessionmanager.h"
+#include "presetmanager.h"
 #include "sheetselectiondialog.h"
 #include "fileloaders.h"
 
@@ -48,6 +49,8 @@ MainWindow::MainWindow(QWidget* parent)
     setAcceptDrops(true);
 
     sessionManager = new SessionManager(this);
+    presetManager = new PresetManager(this);
+    appToolBar->refreshPresetList();
 
     // Connect smoothing parameter changes to auto-replot
     connect(leftPanel->smoothingOptions, &SmoothingOptions::paramsChanged,

@@ -11,6 +11,7 @@ class RightPanel;
 class MenuBar;
 class ToolBar;
 class SessionManager;
+class PresetManager;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -46,6 +47,7 @@ public:
     MenuBar* appMenuBar;
     ToolBar* appToolBar;
     SessionManager* sessionManager;
+    PresetManager* presetManager;
 
 public slots:
     void loadFile(const QString& filePath = QString());

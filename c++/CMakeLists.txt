@@ -48,6 +48,8 @@ set(PROJECT_SOURCES
     statisticsarea.cpp
     sessionmanager.h
     sessionmanager.cpp
+    presetmanager.h
+    presetmanager.cpp
     sheetselectiondialog.h
     sheetselectiondialog.cpp
 )
