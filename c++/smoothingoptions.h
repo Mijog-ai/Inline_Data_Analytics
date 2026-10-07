@@ -34,8 +34,20 @@ private slots:
     void updateSigmaLabel(int value);
     void applyPreset(const QString& preset);
 
+protected:
+    void changeEvent(QEvent* event) override;
+
 private:
     void setupUi();
+    void retranslateUi();
+    QLabel* methodLabel = nullptr;
+    QLabel* windowLabel = nullptr;
+    QLabel* polyOrderLabel = nullptr;
+    QLabel* sigmaLabel = nullptr;
+    QLabel* alphaLabel = nullptr;
+    QLabel* lowessFracLabel = nullptr;
+    QLabel* presetLabel = nullptr;
+
     void connectSignals();
     void hideAllParams();
     void showParam(const QString& paramName);

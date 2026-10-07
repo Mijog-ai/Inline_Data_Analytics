@@ -35,7 +35,6 @@ static Q_LOGGING_CATEGORY(lcMainWindow, "app.mainwindow")
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
-    setWindowTitle(tr("Inline Analytical Tool"));
     setGeometry(100, 100, 1600, 900);
 
     auto* centralWidget = new QWidget(this);
@@ -103,25 +102,25 @@ void MainWindow::setupUi()
 
 void MainWindow::setupEditActions()
 {
-    showSmoothingAction = new QAction(tr("Smoothing_options"), this);
+    showSmoothingAction = new QAction(this);
     showSmoothingAction->setCheckable(true);
     connect(showSmoothingAction, &QAction::triggered, this, [this](bool checked) {
         leftPanel->smoothingOptions->setVisible(checked);
     });
 
-    showCommentAction = new QAction(tr("Add_Comment_plot"), this);
+    showCommentAction = new QAction(this);
     showCommentAction->setCheckable(true);
     connect(showCommentAction, &QAction::triggered, this, [this](bool checked) {
         leftPanel->commentBox->setVisible(checked);
     });
 
-    showFilterAction = new QAction(tr("Data_Filter_plotter"), this);
+    showFilterAction = new QAction(this);
     showFilterAction->setCheckable(true);
     connect(showFilterAction, &QAction::triggered, this, [this](bool checked) {
         leftPanel->dataFilter->setVisible(checked);
     });
 
-    showCurveFitAction = new QAction(tr("Curve Fitting"), this);
+    showCurveFitAction = new QAction(this);
     showCurveFitAction->setCheckable(true);
     connect(showCurveFitAction, &QAction::triggered, this, [this](bool checked) {
         leftPanel->curveFitting->setVisible(checked);
@@ -129,6 +128,23 @@ void MainWindow::setupEditActions()
 
     appMenuBar->addEditActions(showSmoothingAction, showCommentAction,
                                showFilterAction, showCurveFitAction);
+    retranslateUi();
+}
+
+void MainWindow::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QMainWindow::changeEvent(event);
+}
+
+void MainWindow::retranslateUi()
+{
+    setWindowTitle(tr("Inline Analytical Tool"));
+    showSmoothingAction->setText(tr("Smoothing_options"));
+    showCommentAction->setText(tr("Add_Comment_plot"));
+    showFilterAction->setText(tr("Data_Filter_plotter"));
+    showCurveFitAction->setText(tr("Curve Fitting"));
 }
 
 void MainWindow::clearAllData()
@@ -178,7 +194,7 @@ void MainWindow::loadFile(const QString& filePath)
         path = QFileDialog::getOpenFileName(
             this, tr("Open File"), QString(),
             tr("All Files (*);;ASC Files (*.asc);;CSV Files (*.csv);;"
-               "TDMS Files (*.tdms);;Excel Files (*.xlsx *.xls)"));
+               "TDMS Files (*.tdms);;Excel Files (*.xlsx *.xlsm *.xls)"));
     }
 
     if (path.isEmpty()) {
@@ -192,6 +208,35 @@ void MainWindow::loadFile(const QString& filePath)
         QFileInfo fi(path);
         QString ext = fi.suffix().toLower();
 
+        const bool isExcel = (ext == "xlsx" || ext == "xlsm" || ext == "xls");
+        if (!isExcel && ext != "asc" && ext != "csv" && ext != "tdms") {
+            QMessageBox::critical(this, tr("Error"),
+                                  tr("Unsupported file type: %1").arg(ext));
+            return;
+        }
+
+        // Pick the Excel sheet before showing the wait cursor
+        QString excelSheet;
+        if (isExcel) {
+            QStringList sheetNames = FileLoaders::getExcelSheets(path);
+
+            if (sheetNames.isEmpty()) {
+                QMessageBox::critical(this, tr("Error"), tr("No sheets found in Excel file"));
+                return;
+            }
+
+            if (sheetNames.size() > 1) {
+                SheetSelectionDialog dialog(sheetNames, this);
+                if (dialog.exec() != QDialog::Accepted) {
+                    qCInfo(lcMainWindow) << "User cancelled sheet selection";
+                    return;
+                }
+                excelSheet = dialog.getSelectedSheet();
+            } else {
+                excelSheet = sheetNames.first();
+            }
+        }
+
         QApplication::setOverrideCursor(Qt::WaitCursor);
         QElapsedTimer timer;
         timer.start();
@@ -204,32 +249,9 @@ void MainWindow::loadFile(const QString& filePath)
             loaded = FileLoaders::loadCsvFile(path);
         } else if (ext == "tdms") {
             loaded = FileLoaders::loadTdmsFile(path);
-        } else if (ext == "xlsx" || ext == "xls") {
-            QStringList sheetNames = FileLoaders::getExcelSheets(path);
-
-            if (sheetNames.isEmpty()) {
-                QMessageBox::critical(this, tr("Error"), tr("No sheets found in Excel file"));
-                return;
-            }
-
-            if (sheetNames.size() > 1) {
-                SheetSelectionDialog dialog(sheetNames, this);
-                if (dialog.exec() == QDialog::Accepted) {
-                    QString selectedSheet = dialog.getSelectedSheet();
-                    loaded = FileLoaders::loadExcelFile(path, selectedSheet);
-                    qCInfo(lcMainWindow) << "Loaded sheet:" << selectedSheet;
-                } else {
-                    qCInfo(lcMainWindow) << "User cancelled sheet selection";
-                    return;
-                }
-            } else {
-                loaded = FileLoaders::loadExcelFile(path, sheetNames.first());
-                qCInfo(lcMainWindow) << "Loaded single sheet:" << sheetNames.first();
-            }
         } else {
-            QMessageBox::critical(this, tr("Error"),
-                                  tr("Unsupported file type: %1").arg(ext));
-            return;
+            loaded = FileLoaders::loadExcelFile(path, excelSheet);
+            qCInfo(lcMainWindow) << "Loaded sheet:" << excelSheet;
         }
 
         if (loaded.isEmpty()) {

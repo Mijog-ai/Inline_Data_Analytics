@@ -3,6 +3,7 @@
 #include <QGroupBox>
 #include <QTextEdit>
 #include <QVBoxLayout>
+#include <QLabel>
 
 class CommentBox : public QGroupBox {
     Q_OBJECT
@@ -14,7 +15,12 @@ public:
     void setComments(const QString& text);
     void clear();
 
+protected:
+    void changeEvent(QEvent* event) override;
+
 private:
     void setupUi();
+    void retranslateUi();
     QTextEdit* textEdit;
+    QLabel* notesLabel = nullptr;
 };

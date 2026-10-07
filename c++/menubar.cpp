@@ -1,13 +1,13 @@
 #include "menubar.h"
 #include "mainwindow.h"
 #include "sessionmanager.h"
+#include "language.h"
 
 #include <QAction>
 #include <QActionGroup>
 #include <QMenu>
 #include <QMessageBox>
-#include <QProcess>
-#include <QSettings>
+#include <QEvent>
 #include <QApplication>
 #include <QLoggingCategory>
 
@@ -18,88 +18,105 @@ MenuBar::MenuBar(QWidget* parent)
     , mainWindow(qobject_cast<MainWindow*>(parent))
 {
     // File menu
-    fileMenu = addMenu(tr("File"));
+    fileMenu = addMenu(QString());
 
-    auto* loadAction = new QAction(tr("Load File"), this);
+    loadAction = new QAction(this);
     connect(loadAction, &QAction::triggered, this, &MenuBar::loadFileTriggered);
     fileMenu->addAction(loadAction);
 
-    auto* saveDataAction = new QAction(tr("Save Data"), this);
+    saveDataAction = new QAction(this);
     connect(saveDataAction, &QAction::triggered, mainWindow, &MainWindow::saveData);
     fileMenu->addAction(saveDataAction);
 
-    auto* savePlotAction = new QAction(tr("Save Plot"), this);
+    savePlotAction = new QAction(this);
     connect(savePlotAction, &QAction::triggered, mainWindow, &MainWindow::savePlot);
     fileMenu->addAction(savePlotAction);
 
-    auto* exportTableAction = new QAction(tr("Export Table to Excel"), this);
+    exportTableAction = new QAction(this);
     connect(exportTableAction, &QAction::triggered, mainWindow, &MainWindow::exportTableToExcel);
     fileMenu->addAction(exportTableAction);
 
     fileMenu->addSeparator();
 
-    auto* newSessionAction = new QAction(tr("New Session"), this);
+    newSessionAction = new QAction(this);
     connect(newSessionAction, &QAction::triggered, this, &MenuBar::newSession);
     fileMenu->addAction(newSessionAction);
 
-    auto* saveSessionAction = new QAction(tr("Save Session"), this);
+    saveSessionAction = new QAction(this);
     connect(saveSessionAction, &QAction::triggered, this, &MenuBar::saveSession);
     fileMenu->addAction(saveSessionAction);
 
-    auto* loadSessionAction = new QAction(tr("Load Session"), this);
+    loadSessionAction = new QAction(this);
     connect(loadSessionAction, &QAction::triggered, this, &MenuBar::loadSession);
     fileMenu->addAction(loadSessionAction);
 
     fileMenu->addSeparator();
 
-    auto* exitAction = new QAction(tr("Exit"), this);
+    exitAction = new QAction(this);
     connect(exitAction, &QAction::triggered, mainWindow, &QMainWindow::close);
     fileMenu->addAction(exitAction);
 
     // Edit menu (actions added later via addEditActions)
-    editMenu = addMenu(tr("Edit"));
+    editMenu = addMenu(QString());
 
     // Settings menu
-    settingsMenu = addMenu(tr("Settings"));
-    auto* languageMenu = settingsMenu->addMenu(tr("Language"));
+    settingsMenu = addMenu(QString());
+    languageMenu = settingsMenu->addMenu(QString());
 
-    const QString currentLang = QSettings().value("language", "de").toString();
+    const QString currentLang = Language::current();
     auto* langGroup = new QActionGroup(this);
     langGroup->setExclusive(true);
 
-    auto* germanAction = new QAction(tr("German"), this);
+    germanAction = new QAction(this);
     germanAction->setCheckable(true);
     germanAction->setChecked(currentLang == "de");
     connect(germanAction, &QAction::triggered, this, [this]() { changeLanguage("de"); });
     langGroup->addAction(germanAction);
     languageMenu->addAction(germanAction);
 
-    auto* englishAction = new QAction(tr("English"), this);
+    englishAction = new QAction(this);
     englishAction->setCheckable(true);
     englishAction->setChecked(currentLang == "en");
     connect(englishAction, &QAction::triggered, this, [this]() { changeLanguage("en"); });
     langGroup->addAction(englishAction);
     languageMenu->addAction(englishAction);
+
+    retranslateUi();
+}
+
+void MenuBar::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QMenuBar::changeEvent(event);
+}
+
+void MenuBar::retranslateUi()
+{
+    fileMenu->setTitle(tr("File"));
+    loadAction->setText(tr("Load File"));
+    saveDataAction->setText(tr("Save Data"));
+    savePlotAction->setText(tr("Save Plot"));
+    exportTableAction->setText(tr("Export Table to Excel"));
+    newSessionAction->setText(tr("New Session"));
+    saveSessionAction->setText(tr("Save Session"));
+    loadSessionAction->setText(tr("Load Session"));
+    exitAction->setText(tr("Exit"));
+    editMenu->setTitle(tr("Edit"));
+    settingsMenu->setTitle(tr("Settings"));
+    languageMenu->setTitle(tr("Language"));
+    germanAction->setText(tr("German"));
+    englishAction->setText(tr("English"));
 }
 
 void MenuBar::changeLanguage(const QString& code)
 {
-    QSettings settings;
-    if (settings.value("language", "de").toString() == code)
+    if (Language::current() == code)
         return;  // no change
 
-    settings.setValue("language", code);
-
-    auto reply = QMessageBox::question(
-        mainWindow, tr("Language Changed"),
-        tr("The language change will take effect after the application is "
-           "restarted.\n\nRestart now?"),
-        QMessageBox::Yes | QMessageBox::No);
-
-    if (reply == QMessageBox::Yes) {
-        QProcess::startDetached(qApp->applicationFilePath(), qApp->arguments());
-        qApp->quit();
-    }
+    // Switches in place: all widgets re-translate themselves, data is kept.
+    qCInfo(lcMenuBar) << "Switching language to" << code;
+    Language::apply(code);
 }
 
 void MenuBar::addEditActions(QAction* smoothing, QAction* comment,

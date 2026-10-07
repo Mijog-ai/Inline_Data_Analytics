@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QLabel>
 #include <QWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -21,8 +22,14 @@ public:
     QVariantList getStats() const;
     void setStats(const QVariantList& stats);
 
+protected:
+    void changeEvent(QEvent* event) override;
+
 private:
     void setupUi();
+    void retranslateUi();
+    QLabel* titleLabel = nullptr;
+
 
     QTableWidget* table;
 

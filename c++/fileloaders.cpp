@@ -24,7 +24,7 @@ static bool isDataLine(const QString &line)
 }
 
 // Make column names unique by appending _1, _2, etc. for duplicates
-static QStringList makeUniqueNames(const QStringList &names)
+QStringList makeUniqueNames(const QStringList &names)
 {
     QStringList result;
     QMap<QString, int> counts;
@@ -240,41 +240,6 @@ DataFrame loadCsvFile(const QString &filePath)
 
     qInfo() << "Loaded CSV file:" << df.rowCount() << "rows," << df.columnCount() << "columns";
     return df;
-}
-
-DataFrame loadExcelFile(const QString &filePath, const QString &sheetName)
-{
-    // TODO: Add QXlsx library for Excel support
-    // To add Excel support:
-    // 1. Add QXlsx via CMake: find_package(QXlsx) or add as subdirectory
-    // 2. Use QXlsx::Document to read .xlsx files
-    // 3. Iterate rows/columns to build the DataFrame
-
-    Q_UNUSED(sheetName);
-    qWarning() << "Excel file loading is not yet implemented:" << filePath;
-    qWarning() << "To add Excel support, integrate the QXlsx library.";
-    return DataFrame();
-}
-
-DataFrame loadTdmsFile(const QString &filePath)
-{
-    // TODO: Add TDMS library for TDMS support
-    // TDMS (Technical Data Management Streaming) files are used by NI LabVIEW.
-    // To add TDMS support:
-    // 1. Find or write a C++ TDMS reader library
-    // 2. Parse the TDMS binary format (lead-in, metadata, raw data segments)
-    // 3. Map groups/channels to DataFrame columns
-
-    qWarning() << "TDMS file loading is not yet implemented:" << filePath;
-    return DataFrame();
-}
-
-QStringList getExcelSheets(const QString &filePath)
-{
-    // TODO: Add QXlsx library for Excel support
-    Q_UNUSED(filePath);
-    qWarning() << "Excel sheet listing is not yet implemented.";
-    return QStringList();
 }
 
 } // namespace FileLoaders

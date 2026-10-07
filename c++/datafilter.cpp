@@ -1,13 +1,15 @@
 #include "datafilter.h"
 #include "mainwindow.h"
 #include <QFormLayout>
+#include <QEvent>
 #include <QMessageBox>
 #include <limits>
 
 DataFilter::DataFilter(QWidget* parent)
-    : QGroupBox(tr("Data Filter"), parent)
+    : QGroupBox(parent)
 {
     setupUi();
+    retranslateUi();
 }
 
 void DataFilter::setupUi()
@@ -15,32 +17,28 @@ void DataFilter::setupUi()
     auto* layout = new QVBoxLayout(this);
 
     // Filter column selection
-    auto* columnLabel = new QLabel(tr("Filter Column:"), this);
+    columnLabel = new QLabel(this);
     columnLabel->setStyleSheet("font-weight: bold;");
     layout->addWidget(columnLabel);
 
     filterColumn = new QComboBox(this);
-    filterColumn->setToolTip(tr("Select column to filter"));
     layout->addWidget(filterColumn);
 
     // Min/Max value inputs
     auto* rangeLayout = new QFormLayout();
 
     minValue = new QLineEdit(this);
-    minValue->setPlaceholderText(tr("Minimum value"));
-    minValue->setToolTip(tr("Enter minimum value (leave empty for no lower bound)"));
-    rangeLayout->addRow(tr("Min Value:"), minValue);
+    minLabel = new QLabel(this);
+    rangeLayout->addRow(minLabel, minValue);
 
     maxValue = new QLineEdit(this);
-    maxValue->setPlaceholderText(tr("Maximum value"));
-    maxValue->setToolTip(tr("Enter maximum value (leave empty for no upper bound)"));
-    rangeLayout->addRow(tr("Max Value:"), maxValue);
+    maxLabel = new QLabel(this);
+    rangeLayout->addRow(maxLabel, maxValue);
 
     layout->addLayout(rangeLayout);
 
     // Apply button
-    applyFilter = new QPushButton(tr("Apply Filter"), this);
-    applyFilter->setToolTip(tr("Apply the data filter"));
+    applyFilter = new QPushButton(this);
     applyFilter->setStyleSheet(R"(
         QPushButton {
             background-color: #3498db;
@@ -126,4 +124,26 @@ void DataFilter::onApplyClicked()
     if (mainWin) {
         mainWin->applyDataFilter(column, minVal, maxVal);
     }
+}
+
+void DataFilter::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QGroupBox::changeEvent(event);
+}
+
+void DataFilter::retranslateUi()
+{
+    setTitle(tr("Data Filter"));
+    columnLabel->setText(tr("Filter Column:"));
+    filterColumn->setToolTip(tr("Select column to filter"));
+    minLabel->setText(tr("Min Value:"));
+    minValue->setPlaceholderText(tr("Minimum value"));
+    minValue->setToolTip(tr("Enter minimum value (leave empty for no lower bound)"));
+    maxLabel->setText(tr("Max Value:"));
+    maxValue->setPlaceholderText(tr("Maximum value"));
+    maxValue->setToolTip(tr("Enter maximum value (leave empty for no upper bound)"));
+    applyFilter->setText(tr("Apply Filter"));
+    applyFilter->setToolTip(tr("Apply the data filter"));
 }

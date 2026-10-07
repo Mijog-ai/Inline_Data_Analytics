@@ -98,8 +98,12 @@ signals:
     void partitionYSegmentChanged(int segment); // -1=All, else y-segment index
     void exportSegmentRequested();              // export current partition subset
 
+protected:
+    void changeEvent(QEvent* event) override;
+
 private:
     void setupUi();
+    void retranslateUi();
     void createTitleControls();
     void createToolbar();
     void createXAxisControls();
@@ -152,6 +156,9 @@ private:
     void redoLastAction();
     void updateUndoRedoButtons();
 
+    QLabel* titleLabel = nullptr;
+    QLabel* xRangeLabel = nullptr;
+    QLabel* toLabel = nullptr;
     QLineEdit* titleInput = nullptr;
     QPushButton* setTitleButton = nullptr;
     QLineEdit* xMinInput = nullptr;
@@ -173,11 +180,20 @@ private:
     QAction* undoAction = nullptr;
     QAction* redoAction = nullptr;
 
+    QAction* fitAction = nullptr;
+    QAction* clearHighlightsAction = nullptr;
+    QAction* clearPartitionsAction = nullptr;
+    QAction* exportSegmentAction = nullptr;
+
     QAction* partitionAction = nullptr;
     QComboBox* orientCombo = nullptr;
     QComboBox* branchCombo = nullptr;
     QComboBox* partitionCombo = nullptr;
     QComboBox* partitionComboY = nullptr;
+    QWidget* segmentBar = nullptr;     // branch + x/y segment selectors
+    QLabel* branchLabel = nullptr;
+    QLabel* xSegLabel = nullptr;
+    QLabel* ySegLabel = nullptr;
 
     QShortcut* undoShortcut = nullptr;
     QShortcut* redoShortcut = nullptr;

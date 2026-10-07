@@ -26,6 +26,14 @@ public:
 private slots:
     void onApplyClicked();
 
+protected:
+    void changeEvent(QEvent* event) override;
+
 private:
     void setupUi();
+    void retranslateUi();
+    QLabel* columnLabel = nullptr;
+    QLabel* minLabel = nullptr;
+    QLabel* maxLabel = nullptr;
+
 };

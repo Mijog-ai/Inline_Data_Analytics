@@ -9,6 +9,8 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Charts PrintSupport)
+# Qt's bundled zlib (exported by Qt6Core), used to read .xlsx archives.
+find_package(Qt6 REQUIRED COMPONENTS ZlibPrivate)
 
 qt_standard_project_setup()
 
@@ -18,6 +20,12 @@ set(PROJECT_SOURCES
     dataframe.cpp
     fileloaders.h
     fileloaders.cpp
+    language.h
+    language.cpp
+    flowlayout.h
+    flowlayout.cpp
+    excelloader.cpp
+    tdmsloader.cpp
     smoothing.h
     smoothing.cpp
     curvefit.h
@@ -66,6 +74,7 @@ target_link_libraries(InlineDataAnalytics PRIVATE
     Qt6::Widgets
     Qt6::Charts
     Qt6::PrintSupport
+    Qt6::ZlibPrivate
 )
 
 install(TARGETS InlineDataAnalytics

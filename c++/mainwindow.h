@@ -71,11 +71,13 @@ public slots:
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    void changeEvent(QEvent* event) override;
 
 private:
     void setupMenuBar();
     void setupUi();
     void setupEditActions();
+    void retranslateUi();
     void updateUiAfterLoad();
 
     // Edit actions

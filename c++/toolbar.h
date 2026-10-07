@@ -22,7 +22,20 @@ private slots:
     void onLoadPreset();
     void onDeletePreset();
 
+protected:
+    void changeEvent(QEvent* event) override;
+
 private:
+    void retranslateUi();
+
+    QString currentFilePath;
+    QAction* loadAction;
+    QAction* saveDataAction;
+    QAction* savePlotAction;
+    QLabel* presetLabel;
+    QAction* loadPresetAction;
+    QAction* savePresetAction;
+    QAction* deletePresetAction;
     QLabel* fileLabel;
     QComboBox* presetCombo;
     MainWindow* mainWindow;

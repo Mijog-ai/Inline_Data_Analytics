@@ -1,9 +1,10 @@
 #include "smoothingoptions.h"
 #include <QFrame>
 #include <QFont>
+#include <QEvent>
 
 SmoothingOptions::SmoothingOptions(QWidget* parent)
-    : QGroupBox(tr("Advanced Smoothing"), parent)
+    : QGroupBox(parent)
 {
     setStyleSheet(R"(
         QGroupBox {
@@ -29,7 +30,7 @@ void SmoothingOptions::setupUi()
 
     // Enable/Disable smoothing
     auto* enableLayout = new QHBoxLayout();
-    smoothCheck = new QCheckBox(tr("Enable Smoothing"), this);
+    smoothCheck = new QCheckBox(this);
     QFont boldFont("Arial", 10, QFont::Bold);
     smoothCheck->setFont(boldFont);
     enableLayout->addWidget(smoothCheck);
@@ -44,7 +45,7 @@ void SmoothingOptions::setupUi()
 
     // Method selection
     auto* methodLayout = new QVBoxLayout();
-    auto* methodLabel = new QLabel(tr("Smoothing Algorithm:"), this);
+    methodLabel = new QLabel(this);
     methodLabel->setFont(QFont("Arial", 9, QFont::Bold));
     methodLayout->addWidget(methodLabel);
 
@@ -57,7 +58,6 @@ void SmoothingOptions::setupUi()
         "Median Filter",
         "Lowess (Local Regression)"
     });
-    smoothMethod->setToolTip(tr("Select smoothing algorithm"));
     methodLayout->addWidget(smoothMethod);
 
     methodDescription = new QLabel(this);
@@ -78,7 +78,7 @@ void SmoothingOptions::setupUi()
     // Row 0: Window Size (with slider)
     windowContainer = new QVBoxLayout();
     auto* windowHeader = new QHBoxLayout();
-    auto* windowLabel = new QLabel(tr("Window Size:"), this);
+    windowLabel = new QLabel(this);
     windowValueLabel = new QLabel("51", this);
     windowValueLabel->setStyleSheet("color: #3498db; font-weight: bold;");
     windowHeader->addWidget(windowLabel);
@@ -100,13 +100,13 @@ void SmoothingOptions::setupUi()
     polyOrder = new QSpinBox(this);
     polyOrder->setRange(1, 10);
     polyOrder->setValue(3);
-    polyOrder->setToolTip(tr("Order of polynomial for Savitzky-Golay filter"));
-    paramsLayout->addRow(tr("Polynomial Order:"), polyOrder);
+    polyOrderLabel = new QLabel(this);
+    paramsLayout->addRow(polyOrderLabel, polyOrder);
 
     // Row 2: Gaussian Sigma (with slider)
     sigmaContainer = new QVBoxLayout();
     auto* sigmaHeader = new QHBoxLayout();
-    auto* sigmaLabel = new QLabel(tr("Gaussian Sigma:"), this);
+    sigmaLabel = new QLabel(this);
     sigmaValueLabel = new QLabel("2.0", this);
     sigmaValueLabel->setStyleSheet("color: #3498db; font-weight: bold;");
     sigmaHeader->addWidget(sigmaLabel);
@@ -127,8 +127,8 @@ void SmoothingOptions::setupUi()
     alpha->setValue(0.3);
     alpha->setSingleStep(0.05);
     alpha->setDecimals(2);
-    alpha->setToolTip(tr("Smoothing factor (0.01-1.0). Higher = more responsive"));
-    paramsLayout->addRow(tr("Alpha (EMA):"), alpha);
+    alphaLabel = new QLabel(this);
+    paramsLayout->addRow(alphaLabel, alpha);
 
     // Row 4: Lowess Fraction
     lowessFrac = new QDoubleSpinBox(this);
@@ -136,8 +136,8 @@ void SmoothingOptions::setupUi()
     lowessFrac->setValue(0.1);
     lowessFrac->setSingleStep(0.05);
     lowessFrac->setDecimals(2);
-    lowessFrac->setToolTip(tr("Fraction of data to use (0.01-1.0)"));
-    paramsLayout->addRow(tr("Lowess Fraction:"), lowessFrac);
+    lowessFracLabel = new QLabel(this);
+    paramsLayout->addRow(lowessFracLabel, lowessFrac);
 
     mainLayout->addLayout(paramsLayout);
 
@@ -149,16 +149,13 @@ void SmoothingOptions::setupUi()
 
     // Quick presets
     auto* presetLayout = new QHBoxLayout();
-    auto* presetLabel = new QLabel(tr("Quick Presets:"), this);
+    presetLabel = new QLabel(this);
     presetLabel->setFont(QFont("Arial", 9, QFont::Bold));
     presetLayout->addWidget(presetLabel);
 
-    lightButton = new QPushButton(tr("Light"), this);
-    lightButton->setToolTip(tr("Light smoothing"));
-    mediumButton = new QPushButton(tr("Medium"), this);
-    mediumButton->setToolTip(tr("Medium smoothing"));
-    heavyButton = new QPushButton(tr("Heavy"), this);
-    heavyButton->setToolTip(tr("Heavy smoothing"));
+    lightButton = new QPushButton(this);
+    mediumButton = new QPushButton(this);
+    heavyButton = new QPushButton(this);
 
     presetLayout->addWidget(lightButton);
     presetLayout->addWidget(mediumButton);
@@ -167,6 +164,7 @@ void SmoothingOptions::setupUi()
     mainLayout->addLayout(presetLayout);
 
     setLayout(mainLayout);
+    retranslateUi();
 
     // Initial state
     updateMethodDescription();
@@ -412,4 +410,35 @@ void SmoothingOptions::reset()
     sigmaSlider->setValue(20);
     alpha->setValue(0.3);
     lowessFrac->setValue(0.1);
+}
+
+void SmoothingOptions::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QGroupBox::changeEvent(event);
+}
+
+void SmoothingOptions::retranslateUi()
+{
+    setTitle(tr("Advanced Smoothing"));
+    smoothCheck->setText(tr("Enable Smoothing"));
+    methodLabel->setText(tr("Smoothing Algorithm:"));
+    smoothMethod->setToolTip(tr("Select smoothing algorithm"));
+    windowLabel->setText(tr("Window Size:"));
+    polyOrderLabel->setText(tr("Polynomial Order:"));
+    polyOrder->setToolTip(tr("Order of polynomial for Savitzky-Golay filter"));
+    sigmaLabel->setText(tr("Gaussian Sigma:"));
+    alphaLabel->setText(tr("Alpha (EMA):"));
+    alpha->setToolTip(tr("Smoothing factor (0.01-1.0). Higher = more responsive"));
+    lowessFracLabel->setText(tr("Lowess Fraction:"));
+    lowessFrac->setToolTip(tr("Fraction of data to use (0.01-1.0)"));
+    presetLabel->setText(tr("Quick Presets:"));
+    lightButton->setText(tr("Light"));
+    lightButton->setToolTip(tr("Light smoothing"));
+    mediumButton->setText(tr("Medium"));
+    mediumButton->setToolTip(tr("Medium smoothing"));
+    heavyButton->setText(tr("Heavy"));
+    heavyButton->setToolTip(tr("Heavy smoothing"));
+    updateMethodDescription();
 }

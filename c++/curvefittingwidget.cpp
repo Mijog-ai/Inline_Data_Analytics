@@ -6,12 +6,14 @@
 #include "plotarea.h"
 #include "curvefit.h"
 #include <QFormLayout>
+#include <QEvent>
 #include <QMessageBox>
 
 CurveFittingWidget::CurveFittingWidget(QWidget* parent)
-    : QGroupBox(tr("Curve Fitting"), parent)
+    : QGroupBox(parent)
 {
     setupUi();
+    retranslateUi();
 }
 
 void CurveFittingWidget::setupUi()
@@ -19,7 +21,7 @@ void CurveFittingWidget::setupUi()
     auto* layout = new QVBoxLayout(this);
 
     // Fit type selection
-    auto* typeLabel = new QLabel(tr("Fit Type:"), this);
+    typeLabel = new QLabel(this);
     typeLabel->setStyleSheet("font-weight: bold;");
     layout->addWidget(typeLabel);
 
@@ -27,16 +29,14 @@ void CurveFittingWidget::setupUi()
     // Note: these identifiers are compared by text and stored in presets,
     // so they are intentionally left untranslated.
     fitType->addItems({"Polynomial", "Exponential"});
-    fitType->setToolTip(tr("Select curve fitting method"));
     layout->addWidget(fitType);
 
     // Polynomial degree
     auto* degreeLayout = new QHBoxLayout();
-    auto* degreeLabel = new QLabel(tr("Polynomial Degree:"), this);
+    degreeLabel = new QLabel(this);
     degreeSpinbox = new QSpinBox(this);
     degreeSpinbox->setRange(1, 15);
     degreeSpinbox->setValue(1);
-    degreeSpinbox->setToolTip(tr("Degree of polynomial (1=linear, 2=quadratic, etc.)"));
     degreeLayout->addWidget(degreeLabel);
     degreeLayout->addWidget(degreeSpinbox);
     layout->addLayout(degreeLayout);
@@ -44,7 +44,7 @@ void CurveFittingWidget::setupUi()
     // Buttons
     auto* buttonLayout = new QHBoxLayout();
 
-    applyFitButton = new QPushButton(tr("Apply Fit"), this);
+    applyFitButton = new QPushButton(this);
     applyFitButton->setStyleSheet(R"(
         QPushButton {
             background-color: #27ae60;
@@ -62,7 +62,7 @@ void CurveFittingWidget::setupUi()
         }
     )");
 
-    removeFitButton = new QPushButton(tr("Remove Fit"), this);
+    removeFitButton = new QPushButton(this);
     removeFitButton->setStyleSheet(R"(
         QPushButton {
             background-color: #e74c3c;
@@ -181,4 +181,22 @@ void CurveFittingWidget::reset()
 {
     fitType->setCurrentIndex(0);
     degreeSpinbox->setValue(1);
+}
+
+void CurveFittingWidget::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QGroupBox::changeEvent(event);
+}
+
+void CurveFittingWidget::retranslateUi()
+{
+    setTitle(tr("Curve Fitting"));
+    typeLabel->setText(tr("Fit Type:"));
+    fitType->setToolTip(tr("Select curve fitting method"));
+    degreeLabel->setText(tr("Polynomial Degree:"));
+    degreeSpinbox->setToolTip(tr("Degree of polynomial (1=linear, 2=quadratic, etc.)"));
+    applyFitButton->setText(tr("Apply Fit"));
+    removeFitButton->setText(tr("Remove Fit"));
 }

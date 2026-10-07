@@ -2,6 +2,7 @@
 
 #include <QHeaderView>
 #include <QLabel>
+#include <QEvent>
 #include <QCryptographicHash>
 #include <QDataStream>
 #include <QBuffer>
@@ -17,13 +18,12 @@ void StatisticsArea::setupUi()
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    auto* titleLabel = new QLabel(tr("Statistics"), this);
+    titleLabel = new QLabel(this);
     titleLabel->setStyleSheet("font-weight: bold; font-size: 11pt; padding: 4px;");
     layout->addWidget(titleLabel);
 
     table = new QTableWidget(this);
     table->setColumnCount(5);
-    table->setHorizontalHeaderLabels({tr("Statistic"), tr("Max"), tr("Mean"), tr("Min"), tr("Std")});
     table->horizontalHeader()->setStretchLastSection(true);
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -49,6 +49,7 @@ void StatisticsArea::setupUi()
 
     layout->addWidget(table);
     setLayout(layout);
+    retranslateUi();
 }
 
 void StatisticsArea::updateStats(const DataFrame& df)
@@ -139,4 +140,17 @@ void StatisticsArea::setStats(const QVariantList& stats)
         table->setItem(i, 3, new QTableWidgetItem(rowData["min"].toString()));
         table->setItem(i, 4, new QTableWidgetItem(rowData["std"].toString()));
     }
+}
+
+void StatisticsArea::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QWidget::changeEvent(event);
+}
+
+void StatisticsArea::retranslateUi()
+{
+    titleLabel->setText(tr("Statistics"));
+    table->setHorizontalHeaderLabels({tr("Statistic"), tr("Max"), tr("Mean"), tr("Min"), tr("Std")});
 }

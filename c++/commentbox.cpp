@@ -1,8 +1,9 @@
 #include "commentbox.h"
 #include <QLabel>
+#include <QEvent>
 
 CommentBox::CommentBox(QWidget* parent)
-    : QGroupBox(tr("Comments"), parent)
+    : QGroupBox(parent)
 {
     setupUi();
 }
@@ -11,13 +12,11 @@ void CommentBox::setupUi()
 {
     auto* layout = new QVBoxLayout(this);
 
-    auto* label = new QLabel(tr("Notes / Comments:"), this);
-    label->setStyleSheet("font-weight: bold;");
-    layout->addWidget(label);
+    notesLabel = new QLabel(this);
+    notesLabel->setStyleSheet("font-weight: bold;");
+    layout->addWidget(notesLabel);
 
     textEdit = new QTextEdit(this);
-    textEdit->setPlaceholderText(tr("Enter your comments or notes here..."));
-    textEdit->setToolTip(tr("Add comments about the data or analysis"));
     textEdit->setMaximumHeight(100);
     textEdit->setStyleSheet(R"(
         QTextEdit {
@@ -32,6 +31,7 @@ void CommentBox::setupUi()
     layout->addWidget(textEdit);
 
     setLayout(layout);
+    retranslateUi();
 }
 
 QString CommentBox::getComments() const
@@ -47,4 +47,19 @@ void CommentBox::setComments(const QString& text)
 void CommentBox::clear()
 {
     textEdit->clear();
+}
+
+void CommentBox::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QGroupBox::changeEvent(event);
+}
+
+void CommentBox::retranslateUi()
+{
+    setTitle(tr("Comments"));
+    notesLabel->setText(tr("Notes / Comments:"));
+    textEdit->setPlaceholderText(tr("Enter your comments or notes here..."));
+    textEdit->setToolTip(tr("Add comments about the data or analysis"));
 }

@@ -26,6 +26,13 @@ private slots:
     void onApplyFit();
     void onRemoveFit();
 
+protected:
+    void changeEvent(QEvent* event) override;
+
 private:
     void setupUi();
+    void retranslateUi();
+    QLabel* typeLabel = nullptr;
+    QLabel* degreeLabel = nullptr;
+
 };

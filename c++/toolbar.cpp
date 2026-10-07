@@ -3,6 +3,7 @@
 #include "presetmanager.h"
 
 #include <QAction>
+#include <QEvent>
 #include <QFileInfo>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -12,54 +13,78 @@
 static Q_LOGGING_CATEGORY(lcToolBar, "app.toolbar")
 
 ToolBar::ToolBar(QWidget* parent)
-    : QToolBar(tr("Main"), parent)
+    : QToolBar(parent)
     , mainWindow(qobject_cast<MainWindow*>(parent))
 {
-    auto* loadAction = new QAction(tr("Load Data"), this);
+    loadAction = new QAction(this);
     connect(loadAction, &QAction::triggered, this, &ToolBar::loadFileTriggered);
     addAction(loadAction);
 
-    auto* saveDataAction = new QAction(tr("Save Data"), this);
+    saveDataAction = new QAction(this);
     connect(saveDataAction, &QAction::triggered, mainWindow, &MainWindow::saveData);
     addAction(saveDataAction);
 
-    auto* savePlotAction = new QAction(tr("Save Plot"), this);
+    savePlotAction = new QAction(this);
     connect(savePlotAction, &QAction::triggered, mainWindow, &MainWindow::savePlot);
     addAction(savePlotAction);
 
     addSeparator();
 
     // --- Preset controls -------------------------------------------------
-    addWidget(new QLabel(tr("Preset:"), this));
+    presetLabel = new QLabel(this);
+    addWidget(presetLabel);
 
     presetCombo = new QComboBox(this);
     presetCombo->setMinimumWidth(160);
-    presetCombo->setToolTip(tr("Saved option presets (stored beside the application)"));
     addWidget(presetCombo);
 
-    auto* loadPresetAction = new QAction(tr("Load Preset"), this);
-    loadPresetAction->setToolTip(tr("Apply the selected preset to the current data"));
+    loadPresetAction = new QAction(this);
     connect(loadPresetAction, &QAction::triggered, this, &ToolBar::onLoadPreset);
     addAction(loadPresetAction);
 
-    auto* savePresetAction = new QAction(tr("Save Preset"), this);
-    savePresetAction->setToolTip(tr("Save the current options as a named preset"));
+    savePresetAction = new QAction(this);
     connect(savePresetAction, &QAction::triggered, this, &ToolBar::onSavePreset);
     addAction(savePresetAction);
 
-    auto* deletePresetAction = new QAction(tr("Delete Preset"), this);
+    deletePresetAction = new QAction(this);
     connect(deletePresetAction, &QAction::triggered, this, &ToolBar::onDeletePreset);
     addAction(deletePresetAction);
 
     addSeparator();
 
-    fileLabel = new QLabel(tr("No file loaded"), this);
+    fileLabel = new QLabel(this);
     fileLabel->setAlignment(Qt::AlignCenter);
     addWidget(fileLabel);
+
+    retranslateUi();
+}
+
+void ToolBar::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QToolBar::changeEvent(event);
+}
+
+void ToolBar::retranslateUi()
+{
+    setWindowTitle(tr("Main"));
+    loadAction->setText(tr("Load Data"));
+    saveDataAction->setText(tr("Save Data"));
+    savePlotAction->setText(tr("Save Plot"));
+    presetLabel->setText(tr("Preset:"));
+    presetCombo->setToolTip(tr("Saved option presets (stored beside the application)"));
+    loadPresetAction->setText(tr("Load Preset"));
+    loadPresetAction->setToolTip(tr("Apply the selected preset to the current data"));
+    savePresetAction->setText(tr("Save Preset"));
+    savePresetAction->setToolTip(tr("Save the current options as a named preset"));
+    deletePresetAction->setText(tr("Delete Preset"));
+    updateFileName(currentFilePath);
 }
 
 void ToolBar::updateFileName(const QString& filePath)
 {
+    currentFilePath = filePath;
     if (!filePath.isEmpty()) {
         QString fileName = QFileInfo(filePath).fileName();
         fileLabel->setText(tr("Loaded file: %1").arg(fileName));

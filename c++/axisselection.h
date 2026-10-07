@@ -25,8 +25,15 @@ private slots:
     void onSelectionChanged();
     void onYSelectionChanged();
 
+protected:
+    void changeEvent(QEvent* event) override;
+
 private:
     void setupUi();
+    void retranslateUi();
+    QLabel* xLabel = nullptr;
+    QLabel* yLabel = nullptr;
+
     void limitYSelection();
     static constexpr int MAX_Y_COLUMNS = 3;
 };

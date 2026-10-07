@@ -4,10 +4,9 @@
 #include <QDateTime>
 #include <QLoggingCategory>
 #include <QSettings>
-#include <QTranslator>
-#include <QLibraryInfo>
 #include <QIcon>
 #include "mainwindow.h"
+#include "language.h"
 
 static QFile logFile;
 
@@ -52,23 +51,8 @@ int main(int argc, char *argv[])
     app.setApplicationVersion("1.0");
     app.setWindowIcon(QIcon(":/appicon.png"));
 
-    // Language: default to German; the user can switch to English in Settings.
-    // English is the source language, so it needs no translation file.
-    QSettings settings;
-    const QString lang = settings.value("language", "de").toString();
-
-    QTranslator qtTranslator;   // Qt's own strings (standard dialog buttons, etc.)
-    QTranslator appTranslator;  // this application's strings
-    if (lang != "en") {
-        // Qt base translations: try the installed Qt first, then the embedded copy.
-        if (qtTranslator.load("qtbase_" + lang,
-                QLibraryInfo::path(QLibraryInfo::TranslationsPath))
-            || qtTranslator.load(":/i18n/qtbase_" + lang + ".qm")) {
-            app.installTranslator(&qtTranslator);
-        }
-        if (appTranslator.load(":/i18n/app_" + lang + ".qm"))
-            app.installTranslator(&appTranslator);
-    }
+    // Language: default to German; the user can switch live in Settings.
+    Language::apply(Language::current());
 
     MainWindow mainWindow;
     mainWindow.show();

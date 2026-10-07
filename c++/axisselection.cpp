@@ -2,9 +2,10 @@
 #include "mainwindow.h"
 #include <QVBoxLayout>
 #include <QLabel>
+#include <QEvent>
 
 AxisSelection::AxisSelection(QWidget* parent)
-    : QGroupBox(tr("Axis Selection"), parent)
+    : QGroupBox(parent)
 {
     setupUi();
 }
@@ -14,26 +15,25 @@ void AxisSelection::setupUi()
     auto* layout = new QVBoxLayout(this);
 
     // X-axis selection
-    auto* xLabel = new QLabel(tr("X-Axis Column:"));
+    xLabel = new QLabel(this);
     xLabel->setStyleSheet("font-weight: bold;");
     layout->addWidget(xLabel);
 
     xCombo = new QComboBox(this);
-    xCombo->setToolTip(tr("Select X-axis column"));
     layout->addWidget(xCombo);
 
     // Y-axis selection
-    auto* yLabel = new QLabel(tr("Y-Axis Columns (max 3):"));
+    yLabel = new QLabel(this);
     yLabel->setStyleSheet("font-weight: bold;");
     layout->addWidget(yLabel);
 
     yList = new QListWidget(this);
     yList->setSelectionMode(QAbstractItemView::MultiSelection);
-    yList->setToolTip(tr("Select up to 3 Y-axis columns"));
     yList->setMaximumHeight(120);
     layout->addWidget(yList);
 
     setLayout(layout);
+    retranslateUi();
 
     // Connect signals
     connect(xCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -123,4 +123,20 @@ void AxisSelection::limitYSelection()
         }
         yList->blockSignals(false);
     }
+}
+
+void AxisSelection::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QGroupBox::changeEvent(event);
+}
+
+void AxisSelection::retranslateUi()
+{
+    setTitle(tr("Axis Selection"));
+    xLabel->setText(tr("X-Axis Column:"));
+    xCombo->setToolTip(tr("Select X-axis column"));
+    yLabel->setText(tr("Y-Axis Columns (max 3):"));
+    yList->setToolTip(tr("Select up to 3 Y-axis columns"));
 }
