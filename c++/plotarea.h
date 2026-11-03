@@ -55,6 +55,8 @@ public:
     void clearPlot();
     void setDefaultTitle(const QString& title);
     void exportPlot(const QString& fileName);
+    // Currently visible x-axis range (after X Range / zoom); false if nothing is plotted.
+    bool visibleXRange(double& minX, double& maxX) const;
 
     void toggleCursor(bool enabled);
     void toggleLegend(bool enabled);

@@ -14,10 +14,12 @@
 #include "presetmanager.h"
 #include "sheetselectiondialog.h"
 #include "fileloaders.h"
+#include "smoothing.h"
 
 #include <QHBoxLayout>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QMimeData>
 #include <QFileInfo>
 #include <QFile>
@@ -295,9 +297,16 @@ void MainWindow::saveData()
         return;
     }
 
+    DataFrame data;
+    bool plotView = false;
+    if (!chooseExportData(data, plotView))
+        return;
+
     QString defaultName = currentFile.isEmpty()
         ? "data"
         : QFileInfo(currentFile).completeBaseName();
+    if (plotView)
+        defaultName += "_plot";
 
     QString fileName = QFileDialog::getSaveFileName(
         this, tr("Save Data"), defaultName,
@@ -307,27 +316,12 @@ void MainWindow::saveData()
         return;
 
     if (fileName.endsWith(".csv")) {
-        QFile file(fileName);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QMessageBox::critical(this, tr("Error"), tr("Could not open file for writing"));
-            return;
-        }
-        QTextStream out(&file);
-        // Header
-        out << df.columnNames().join(';') << "\n";
-        // Data
-        for (int r = 0; r < df.rowCount(); ++r) {
-            QStringList vals;
-            for (const auto& col : df.columnNames())
-                vals << QString::number(df.value(r, col), 'g', 10);
-            out << vals.join(';') << "\n";
-        }
-        file.close();
-        QMessageBox::information(this, tr("Success"), tr("Data saved successfully!"));
+        if (writeCsv(fileName, data))
+            QMessageBox::information(this, tr("Success"), tr("Data saved successfully!"));
     } else if (fileName.endsWith(".xlsx")) {
         try {
             QApplication::setOverrideCursor(Qt::WaitCursor);
-            FileLoaders::saveExcelFile(fileName, {{QStringLiteral("Data"), df, {}}});
+            FileLoaders::saveExcelFile(fileName, {{QStringLiteral("Data"), data, {}}});
             QApplication::restoreOverrideCursor();
             QMessageBox::information(this, tr("Success"), tr("Data saved successfully!"));
         } catch (const std::exception& e) {
@@ -336,6 +330,103 @@ void MainWindow::saveData()
                                   tr("An error occurred while saving the data:\n%1").arg(e.what()));
         }
     }
+}
+
+bool MainWindow::writeCsv(const QString& fileName, const DataFrame& data)
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, tr("Error"), tr("Could not open file for writing"));
+        return false;
+    }
+    QTextStream out(&file);
+    const QStringList cols = data.columnNames();
+    out << cols.join(';') << "\n";
+    for (int r = 0; r < data.rowCount(); ++r) {
+        QStringList vals;
+        for (const auto& col : cols)
+            vals << QString::number(data.value(r, col), 'g', 10);
+        out << vals.join(';') << "\n";
+    }
+    return true;
+}
+
+DataFrame MainWindow::plotViewData() const
+{
+    const DataFrame subset = currentSubset();
+    const QString xCol = leftPanel->axisSelection->xColumn();
+    if (subset.isEmpty() || xCol.isEmpty() || !subset.hasColumn(xCol))
+        return DataFrame();
+
+    double lo = std::numeric_limits<double>::lowest();
+    double hi = std::numeric_limits<double>::max();
+    rightPanel->plotArea->visibleXRange(lo, hi);
+
+    const QVector<double>& x = subset.columnRef(xCol);
+    QVector<int> rows;
+    for (int i = 0; i < x.size(); ++i)
+        if (x[i] >= lo && x[i] <= hi)
+            rows << i;
+
+    auto pick = [&rows](const QVector<double>& col) {
+        QVector<double> out;
+        out.reserve(rows.size());
+        for (int r : rows)
+            out << (r < col.size() ? col[r] : std::numeric_limits<double>::quiet_NaN());
+        return out;
+    };
+
+    // Smoothing runs on the whole subset before the x range is applied, as in the plot.
+    const QVariantMap params = leftPanel->smoothingOptions->getParams();
+    const bool smooth = params.value("apply", false).toBool();
+
+    DataFrame out;
+    out.addColumn(xCol, pick(x));
+    for (const QString& yCol : leftPanel->axisSelection->yColumns()) {
+        if (yCol == xCol || !subset.hasColumn(yCol))
+            continue;
+        const QVector<double>& y = subset.columnRef(yCol);
+        out.addColumn(yCol, pick(y));
+        if (smooth) {
+            const QVector<double> smoothed = Smoothing::applySmoothing(
+                y, params.value("method", "moving_average").toString(),
+                params.value("window_length", 51).toInt(), params.value("poly_order", 3).toInt(),
+                params.value("sigma", 2.0).toDouble(), params.value("alpha", 0.3).toDouble(),
+                params.value("lowess_frac", 0.1).toDouble());
+            out.addColumn(yCol + " (smoothed)", pick(smoothed));
+        }
+    }
+    return out;
+}
+
+bool MainWindow::chooseExportData(DataFrame& data, bool& plotView)
+{
+    const DataFrame view = plotViewData();
+
+    QMessageBox box(QMessageBox::Question, tr("Export Data"),
+                    tr("Which data do you want to export?"), QMessageBox::Cancel, this);
+    box.setInformativeText(tr("The current plot view contains only the plotted columns and the "
+                              "rows shown in the plot (data filter, branch, partition segments "
+                              "and visible x range), plus the smoothed curves if smoothing is on."));
+    QPushButton* viewButton = box.addButton(
+        tr("Current Plot View (%1 rows)").arg(view.rowCount()), QMessageBox::AcceptRole);
+    QPushButton* wholeButton = box.addButton(
+        tr("Whole Dataset (%1 rows)").arg(df.rowCount()), QMessageBox::AcceptRole);
+    viewButton->setEnabled(!view.isEmpty());
+    box.setDefaultButton(view.isEmpty() ? wholeButton : viewButton);
+    box.exec();
+
+    if (box.clickedButton() == wholeButton) {
+        data = df;
+        plotView = false;
+        return true;
+    }
+    if (box.clickedButton() == viewButton) {
+        data = view;
+        plotView = true;
+        return true;
+    }
+    return false;
 }
 
 void MainWindow::savePlot()
@@ -382,9 +473,16 @@ void MainWindow::exportTableToExcel()
         return;
     }
 
+    DataFrame data;
+    bool plotView = false;
+    if (!chooseExportData(data, plotView))
+        return;
+
     QString defaultName = currentFile.isEmpty()
         ? "data"
         : QFileInfo(currentFile).completeBaseName();
+    if (plotView)
+        defaultName += "_plot";
 
     QString fileName = QFileDialog::getSaveFileName(
         this, tr("Export Table to Excel"), defaultName,
@@ -395,8 +493,6 @@ void MainWindow::exportTableToExcel()
 
     if (!fileName.endsWith(".xlsx", Qt::CaseInsensitive))
         fileName += ".xlsx";
-
-    const DataFrame& data = filteredDf.isEmpty() ? df : filteredDf;
 
     // Statistics in the layout of pandas' describe(): one column per data column.
     QList<QVariantList> statsRows;
@@ -428,7 +524,19 @@ void MainWindow::exportTableToExcel()
         {"Gaussian Sigma", smoothing.value("sigma")},
         {"Alpha", smoothing.value("alpha")},
         {"LOWESS Fraction", smoothing.value("lowess_frac")},
+        {"Exported Data", plotView ? "Current plot view" : "Whole dataset"},
     };
+    if (plotView) {
+        double lo = 0, hi = 0;
+        if (rightPanel->plotArea->visibleXRange(lo, hi))
+            configRows << QVariantList{"X Range Min", lo} << QVariantList{"X Range Max", hi};
+        static const char* branchNames[] = {"All", "Upstream", "Downstream"};
+        configRows << QVariantList{"Branch", branchNames[qBound(0, activeBranch, 2)]}
+                   << QVariantList{"X Segment", activePartition >= 0 ? QVariant(activePartition + 1)
+                                                                     : QVariant("All")}
+                   << QVariantList{"Y Band", activePartitionY >= 0 ? QVariant(activePartitionY + 1)
+                                                                   : QVariant("All")};
+    }
 
     QList<QVariantList> commentRows{{"Comments"}, {leftPanel->commentBox->getComments()}};
 

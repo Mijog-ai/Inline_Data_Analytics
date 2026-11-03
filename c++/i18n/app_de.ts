@@ -345,6 +345,31 @@ Bestimmtheitsmaß R²: %3</translation>
         <translation>Daten erfolgreich gespeichert!</translation>
     </message>
     <message>
+        <location filename="../mainwindow.cpp" line="397" />
+        <source>Export Data</source>
+        <translation>Daten exportieren</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="398" />
+        <source>Which data do you want to export?</source>
+        <translation>Welche Daten möchten Sie exportieren?</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="399" />
+        <source>The current plot view contains only the plotted columns and the rows shown in the plot (data filter, branch, partition segments and visible x range), plus the smoothed curves if smoothing is on.</source>
+        <translation>Die aktuelle Plotansicht enthält nur die geplotteten Spalten und die im Plot angezeigten Zeilen (Datenfilter, Zweig, Partitionssegmente und sichtbarer X-Bereich) sowie die geglätteten Kurven, wenn die Glättung aktiv ist.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="403" />
+        <source>Current Plot View (%1 rows)</source>
+        <translation>Aktuelle Plotansicht (%1 Zeilen)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="405" />
+        <source>Whole Dataset (%1 rows)</source>
+        <translation>Gesamter Datensatz (%1 Zeilen)</translation>
+    </message>
+    <message>
         <location filename="../mainwindow.cpp" line="337" />
         <source>An error occurred while saving the data:
 %1</source>

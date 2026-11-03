@@ -80,6 +80,14 @@ private:
     void retranslateUi();
     void updateUiAfterLoad();
 
+    // What is drawn in the plot: currentSubset() limited to the visible x range,
+    // with the x and selected y columns plus smoothed curves when smoothing is on.
+    DataFrame plotViewData() const;
+    // Ask whether to export the whole dataset or the current plot view.
+    // Returns false if cancelled or the chosen data is empty.
+    bool chooseExportData(DataFrame& data, bool& plotView);
+    bool writeCsv(const QString& fileName, const DataFrame& data);
+
     // Edit actions
     QAction* showSmoothingAction;
     QAction* showCommentAction;

@@ -818,6 +818,15 @@ void PlotArea::setDefaultTitle(const QString& title)
         chart->setTitle(title);
 }
 
+bool PlotArea::visibleXRange(double& minX, double& maxX) const
+{
+    if (!xAxis || plotItems.isEmpty())
+        return false;
+    minX = xAxis->min();
+    maxX = xAxis->max();
+    return true;
+}
+
 void PlotArea::exportPlot(const QString& fileName)
 {
     QString path = fileName;
