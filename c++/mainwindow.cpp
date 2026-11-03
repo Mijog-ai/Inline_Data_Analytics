@@ -325,9 +325,16 @@ void MainWindow::saveData()
         file.close();
         QMessageBox::information(this, tr("Success"), tr("Data saved successfully!"));
     } else if (fileName.endsWith(".xlsx")) {
-        // TODO: Add QXlsx library for Excel export
-        QMessageBox::warning(this, tr("Not Supported"),
-                             tr("Excel export requires the QXlsx library. Please save as CSV."));
+        try {
+            QApplication::setOverrideCursor(Qt::WaitCursor);
+            FileLoaders::saveExcelFile(fileName, {{QStringLiteral("Data"), df, {}}});
+            QApplication::restoreOverrideCursor();
+            QMessageBox::information(this, tr("Success"), tr("Data saved successfully!"));
+        } catch (const std::exception& e) {
+            QApplication::restoreOverrideCursor();
+            QMessageBox::critical(this, tr("Error"),
+                                  tr("An error occurred while saving the data:\n%1").arg(e.what()));
+        }
     }
 }
 
@@ -386,9 +393,60 @@ void MainWindow::exportTableToExcel()
     if (fileName.isEmpty())
         return;
 
-    // TODO: Add QXlsx library for full Excel export with multiple sheets
-    QMessageBox::warning(this, tr("Not Supported"),
-                         tr("Excel export requires the QXlsx library. Please use Save Data as CSV instead."));
+    if (!fileName.endsWith(".xlsx", Qt::CaseInsensitive))
+        fileName += ".xlsx";
+
+    const DataFrame& data = filteredDf.isEmpty() ? df : filteredDf;
+
+    // Statistics in the layout of pandas' describe(): one column per data column.
+    QList<QVariantList> statsRows;
+    const auto stats = data.describe();
+    QVariantList header{QString()}, countRow{"count"}, meanRow{"mean"}, stdRow{"std"},
+        minRow{"min"}, maxRow{"max"};
+    for (const auto& s : stats) {
+        header << s.name;
+        countRow << s.count;
+        meanRow << s.mean;
+        stdRow << s.std;
+        minRow << s.min;
+        maxRow << s.max;
+    }
+    statsRows << header << countRow << meanRow << stdRow << minRow << maxRow;
+
+    QStringList yAxes;
+    for (const auto* item : leftPanel->axisSelection->yList->selectedItems())
+        yAxes << item->text();
+    const QVariantMap smoothing = leftPanel->smoothingOptions->getParams();
+    QList<QVariantList> configRows{
+        {"Setting", "Value"},
+        {"X-axis", leftPanel->axisSelection->xCombo->currentText()},
+        {"Y-axes", yAxes.join(", ")},
+        {"Smoothing", smoothing.value("apply")},
+        {"Smoothing Method", smoothing.value("method")},
+        {"Window Size", smoothing.value("window_length")},
+        {"Polynomial Order", smoothing.value("poly_order")},
+        {"Gaussian Sigma", smoothing.value("sigma")},
+        {"Alpha", smoothing.value("alpha")},
+        {"LOWESS Fraction", smoothing.value("lowess_frac")},
+    };
+
+    QList<QVariantList> commentRows{{"Comments"}, {leftPanel->commentBox->getComments()}};
+
+    try {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        FileLoaders::saveExcelFile(fileName, {
+            {QStringLiteral("Data"), data, {}},
+            {QStringLiteral("Statistics"), {}, statsRows},
+            {QStringLiteral("Plot Configuration"), {}, configRows},
+            {QStringLiteral("Comments"), {}, commentRows},
+        });
+        QApplication::restoreOverrideCursor();
+        QMessageBox::information(this, tr("Success"), tr("Table exported to Excel successfully!"));
+    } catch (const std::exception& e) {
+        QApplication::restoreOverrideCursor();
+        QMessageBox::critical(this, tr("Error"),
+                              tr("An error occurred while exporting the table:\n%1").arg(e.what()));
+    }
 }
 
 void MainWindow::applyDataFilter(const QString& column, double minVal, double maxVal)

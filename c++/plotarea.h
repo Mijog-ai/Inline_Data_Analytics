@@ -112,6 +112,8 @@ private:
 
     bool eventFilter(QObject* obj, QEvent* event) override;
     void onMouseMoved(QPointF pos);
+    void clearCursorItems();
+    void setCursorItemsVisible(bool visible);
     void handleLeftClick(QPointF valuePos);
     void handleDoubleClick(QPointF valuePos);
     void processPendingClick();
@@ -221,8 +223,11 @@ private:
     };
 
     QGraphicsLineItem* crosshairV = nullptr;
-    QGraphicsLineItem* crosshairH = nullptr;
+    // One horizontal guide and marker per series, at the curve value the label reports.
+    QVector<QGraphicsLineItem*> cursorHLines;
+    QVector<QGraphicsEllipseItem*> cursorDots;
     QGraphicsSimpleTextItem* cursorLabel = nullptr;
+    QGraphicsRectItem* cursorLabelBg = nullptr;
 
     struct HighlightLine {
         double xValue = 0;

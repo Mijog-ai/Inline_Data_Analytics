@@ -261,8 +261,8 @@ Bestimmtheitsmaß R²: %3</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="180" />
-        <source>All Files (*);;ASC Files (*.asc);;CSV Files (*.csv);;TDMS Files (*.tdms);;Excel Files (*.xlsx *.xls)</source>
-        <translation>Alle Dateien (*);;ASC-Dateien (*.asc);;CSV-Dateien (*.csv);;TDMS-Dateien (*.tdms);;Excel-Dateien (*.xlsx *.xls)</translation>
+        <source>All Files (*);;ASC Files (*.asc);;CSV Files (*.csv);;TDMS Files (*.tdms);;Excel Files (*.xlsx *.xlsm *.xls)</source>
+        <translation>Alle Dateien (*);;ASC-Dateien (*.asc);;CSV-Dateien (*.csv);;TDMS-Dateien (*.tdms);;Excel-Dateien (*.xlsx *.xlsm *.xls)</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="211" />
@@ -343,6 +343,25 @@ Bestimmtheitsmaß R²: %3</translation>
         <location filename="../mainwindow.cpp" line="304" />
         <source>Data saved successfully!</source>
         <translation>Daten erfolgreich gespeichert!</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="337" />
+        <source>An error occurred while saving the data:
+%1</source>
+        <translation>Beim Speichern der Daten ist ein Fehler aufgetreten:
+%1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="445" />
+        <source>Table exported to Excel successfully!</source>
+        <translation>Tabelle erfolgreich nach Excel exportiert!</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="449" />
+        <source>An error occurred while exporting the table:
+%1</source>
+        <translation>Beim Exportieren der Tabelle ist ein Fehler aufgetreten:
+%1</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="307" />

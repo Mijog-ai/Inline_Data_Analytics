@@ -793,21 +793,7 @@ void PlotArea::clearPlot()
     }
     floatingTextItems.clear();
 
-    if (crosshairV) {
-        chart->scene()->removeItem(crosshairV);
-        delete crosshairV;
-        crosshairV = nullptr;
-    }
-    if (crosshairH) {
-        chart->scene()->removeItem(crosshairH);
-        delete crosshairH;
-        crosshairH = nullptr;
-    }
-    if (cursorLabel) {
-        chart->scene()->removeItem(cursorLabel);
-        delete cursorLabel;
-        cursorLabel = nullptr;
-    }
+    clearCursorItems();
 
     chart->removeAllSeries();
     for (auto& item : plotItems) {
@@ -845,9 +831,7 @@ void PlotArea::exportPlot(const QString& fileName)
     // Hide cursor during export
     bool cursorWasVisible = showCursor;
     if (cursorWasVisible) {
-        if (crosshairV) crosshairV->setVisible(false);
-        if (crosshairH) crosshairH->setVisible(false);
-        if (cursorLabel) cursorLabel->setVisible(false);
+        setCursorItemsVisible(false);
     }
     QApplication::processEvents();
 
@@ -898,9 +882,7 @@ void PlotArea::exportPlot(const QString& fileName)
 
     // Restore cursor
     if (cursorWasVisible) {
-        if (crosshairV) crosshairV->setVisible(true);
-        if (crosshairH) crosshairH->setVisible(true);
-        if (cursorLabel) cursorLabel->setVisible(true);
+        setCursorItemsVisible(true);
     }
 }
 
@@ -912,23 +894,8 @@ void PlotArea::toggleCursor(bool enabled)
 {
     showCursor = enabled;
 
-    if (!enabled) {
-        if (crosshairV) {
-            chart->scene()->removeItem(crosshairV);
-            delete crosshairV;
-            crosshairV = nullptr;
-        }
-        if (crosshairH) {
-            chart->scene()->removeItem(crosshairH);
-            delete crosshairH;
-            crosshairH = nullptr;
-        }
-        if (cursorLabel) {
-            chart->scene()->removeItem(cursorLabel);
-            delete cursorLabel;
-            cursorLabel = nullptr;
-        }
-    }
+    if (!enabled)
+        clearCursorItems();
 }
 
 void PlotArea::toggleLegend(bool enabled)
@@ -1528,23 +1495,50 @@ void PlotArea::onMouseMoved(QPointF pos)
     crosshairV->setLine(scenePos.x(), plotArea.top(), scenePos.x(), plotArea.bottom());
     crosshairV->setPen(crosshairPen);
 
-    if (!crosshairH)
-        crosshairH = chart->scene()->addLine(QLineF(), crosshairPen);
-    crosshairH->setLine(plotArea.left(), scenePos.y(), plotArea.right(), scenePos.y());
-    crosshairH->setPen(crosshairPen);
+    // Each series value is the curve interpolated at the cursor x. Mark that point
+    // on the curve and run a guide from it to the y-axis, so it is clear where the
+    // reported value comes from (rather than from the mouse height).
+    while (cursorDots.size() < plotItems.size()) {
+        auto* dot = chart->scene()->addEllipse(QRectF(-4, -4, 8, 8));
+        dot->setZValue(20);
+        cursorDots.append(dot);
+        auto* line = chart->scene()->addLine(QLineF());
+        line->setZValue(19);
+        cursorHLines.append(line);
+    }
 
-    QString labelText = QString("x: %1").arg(pos.x(), 0, 'f', 3);
-    for (const auto& item : plotItems) {
-        double yVal = findClosestYFromData(item.xData, item.yData, pos.x());
-        if (std::isfinite(yVal))
-            labelText += QString("\n%1: %2").arg(item.name).arg(yVal, 0, 'f', 3);
+    QString xlabel = xColumnName.isEmpty() ? QStringLiteral("x") : xColumnName;
+    QString labelText = QString("%1: %2").arg(xlabel).arg(pos.x(), 0, 'f', 3);
+    for (int i = 0; i < cursorDots.size(); ++i) {
+        bool shown = false;
+        if (i < plotItems.size()) {
+            const auto& item = plotItems[i];
+            double yVal = findClosestYFromData(item.xData, item.yData, pos.x());
+            if (std::isfinite(yVal)) {
+                labelText += QString("\n%1: %2").arg(item.name).arg(yVal, 0, 'f', 3);
+                QPointF pt = chart->mapToPosition(QPointF(pos.x(), yVal), item.series);
+                if (plotArea.contains(pt)) {
+                    cursorDots[i]->setPos(pt);
+                    cursorDots[i]->setPen(QPen(Qt::white, 1.5));
+                    cursorDots[i]->setBrush(item.color);
+                    cursorHLines[i]->setPen(QPen(item.color, 1, Qt::DashLine));
+                    cursorHLines[i]->setLine(plotArea.left(), pt.y(), pt.x(), pt.y());
+                    shown = true;
+                }
+            }
+        }
+        cursorDots[i]->setVisible(shown);
+        cursorHLines[i]->setVisible(shown);
     }
 
     if (!cursorLabel) {
+        cursorLabelBg = chart->scene()->addRect(QRectF(), QPen(QColor(120, 120, 120), 1),
+                                                QBrush(QColor(255, 255, 255, 235)));
+        cursorLabelBg->setZValue(21);
         cursorLabel = chart->scene()->addSimpleText(labelText);
-        cursorLabel->setBrush(QBrush(QColor(50, 50, 50)));
-        QFont labelFont("Arial", 8);
-        cursorLabel->setFont(labelFont);
+        cursorLabel->setBrush(QBrush(Qt::black));
+        cursorLabel->setFont(QFont("Arial", 8));
+        cursorLabel->setZValue(22);
     }
     cursorLabel->setText(labelText);
 
@@ -1556,6 +1550,41 @@ void PlotArea::onMouseMoved(QPointF pos)
     if (labelY < plotArea.top())
         labelY = plotArea.top() + 5;
     cursorLabel->setPos(labelX, labelY);
+    cursorLabelBg->setRect(labelRect.translated(labelX, labelY).adjusted(-4, -3, 4, 3));
+}
+
+void PlotArea::clearCursorItems()
+{
+    QGraphicsScene* scene = chart ? chart->scene() : nullptr;
+    auto drop = [scene](auto*& item) {
+        if (!item)
+            return;
+        if (scene)
+            scene->removeItem(item);
+        delete item;
+        item = nullptr;
+    };
+    drop(crosshairV);
+    drop(cursorLabel);
+    drop(cursorLabelBg);
+    for (auto*& line : cursorHLines)
+        drop(line);
+    for (auto*& dot : cursorDots)
+        drop(dot);
+    cursorHLines.clear();
+    cursorDots.clear();
+}
+
+void PlotArea::setCursorItemsVisible(bool visible)
+{
+    if (crosshairV) crosshairV->setVisible(visible);
+    if (cursorLabel) cursorLabel->setVisible(visible);
+    if (cursorLabelBg) cursorLabelBg->setVisible(visible);
+    // Series markers are re-shown by the next mouse move.
+    if (!visible) {
+        for (auto* line : cursorHLines) line->setVisible(false);
+        for (auto* dot : cursorDots) dot->setVisible(false);
+    }
 }
 
 // ========================================================================
@@ -1610,11 +1639,15 @@ void PlotArea::addHighlight(double x)
     legendBox->setDefaultTextColor(Qt::black);
     legendBox->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
 
-    // Background for legend box
+    // Background for legend box. A child is painted over its parent unless flagged
+    // to stack behind it (a negative z only orders siblings), which washed the text
+    // out; also keep the box above the plotted curves.
     QRectF textBounds = legendBox->boundingRect();
-    auto* bg = chart->scene()->addRect(textBounds, QPen(Qt::black, 2), QBrush(QColor(255, 255, 255, 230)));
-    bg->setParentItem(legendBox);
-    bg->setZValue(-1);
+    auto* bg = new QGraphicsRectItem(textBounds, legendBox);
+    bg->setPen(QPen(Qt::black, 2));
+    bg->setBrush(QBrush(Qt::white));
+    bg->setFlag(QGraphicsItem::ItemStacksBehindParent);
+    legendBox->setZValue(25);
 
     // Position near the clicked point
     double xOffset = (area.width()) * 0.02;

@@ -9,7 +9,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Charts PrintSupport)
-# Qt's bundled zlib (exported by Qt6Core), used to read .xlsx archives.
+# Qt's bundled zlib (exported by Qt6Core), used to read and write .xlsx archives.
 find_package(Qt6 REQUIRED COMPONENTS ZlibPrivate)
 
 qt_standard_project_setup()
@@ -25,6 +25,7 @@ set(PROJECT_SOURCES
     flowlayout.h
     flowlayout.cpp
     excelloader.cpp
+    excelwriter.cpp
     tdmsloader.cpp
     smoothing.h
     smoothing.cpp
