@@ -160,6 +160,11 @@ void MainWindow::clearAllData()
     activePartition = -1;
     activePartitionY = -1;
     activeBranch = BranchAll;
+    datasets.clear();
+    activeDataset = -1;
+    referenceColumns.clear();
+    if (appToolBar)
+        appToolBar->refreshDatasetList();
 }
 
 void MainWindow::resetUi()
@@ -262,17 +267,12 @@ void MainWindow::loadFile(const QString& filePath)
             return;
         }
 
-        df = loaded;
-        originalDf = df.copy();
-        filteredDf = df.copy();
-        updateUiAfterLoad();
-
-        currentFile = path;
-        appToolBar->updateFileName(currentFile);
-
-        // Set default title to filename without extension
-        QString filenameWithoutExt = fi.completeBaseName();
-        rightPanel->plotArea->setDefaultTitle(filenameWithoutExt);
+        if (!addDataset(path, loaded)) {
+            // Column set did not match the already-loaded files; addDataset
+            // has already told the user why.
+            QApplication::restoreOverrideCursor();
+            return;
+        }
 
         QApplication::restoreOverrideCursor();
         qint64 elapsed = timer.elapsed();
@@ -633,7 +633,15 @@ void MainWindow::updatePlot(bool updateFilter)
             isLoop = detectTurningIndex(filteredDf.columnRef(xColumn)) >= 0;
         rightPanel->plotArea->setBranchAvailable(isLoop);
 
-        rightPanel->plotArea->plotData(currentSubset(), xColumn, yColumns, smoothingParams);
+        // Overlay the other loaded datasets (same columns, same colours/axes,
+        // but a distinct line style each) so they can be compared visually.
+        QVector<QPair<QString, DataFrame>> overlays;
+        for (int k = 0; k < datasets.size(); ++k)
+            if (k != activeDataset)
+                overlays.append({datasets[k].name, datasets[k].data});
+
+        rightPanel->plotArea->plotData(currentSubset(), xColumn, yColumns,
+                                       smoothingParams, QString(), overlays);
         updateStatistics();
         unsavedChanges = true;
 
@@ -881,6 +889,81 @@ void MainWindow::updateUiAfterLoad()
     } else {
         qCWarning(lcMainWindow) << "DataFrame is empty after loading";
     }
+}
+
+bool MainWindow::addDataset(const QString& path, const DataFrame& data)
+{
+    // Enforce the shared-column-names rule (order-independent) against the
+    // first dataset that was loaded.
+    QStringList sortedCols = data.columnNames();
+    sortedCols.sort();
+
+    if (!datasets.isEmpty() && sortedCols != referenceColumns) {
+        QStringList missing, extra;
+        for (const QString& c : referenceColumns)
+            if (!sortedCols.contains(c)) missing << c;
+        for (const QString& c : sortedCols)
+            if (!referenceColumns.contains(c)) extra << c;
+
+        QString detail;
+        if (!missing.isEmpty())
+            detail += tr("Missing columns: %1\n").arg(missing.join(", "));
+        if (!extra.isEmpty())
+            detail += tr("Unexpected columns: %1\n").arg(extra.join(", "));
+
+        QMessageBox::warning(this, tr("Columns Do Not Match"),
+            tr("This file's columns do not match the already-loaded data, so it "
+               "was not added.\n\nExpected columns: %1\n\n%2")
+                .arg(referenceColumns.join(", "), detail));
+        return false;
+    }
+
+    if (datasets.isEmpty())
+        referenceColumns = sortedCols;
+
+    // Build a unique display name from the file base name.
+    QString base = QFileInfo(path).completeBaseName();
+    QString name = base;
+    int suffix = 2;
+    auto nameTaken = [this](const QString& n) {
+        for (const auto& d : datasets)
+            if (d.name == n) return true;
+        return false;
+    };
+    while (nameTaken(name))
+        name = QStringLiteral("%1 (%2)").arg(base).arg(suffix++);
+
+    datasets.append({name, path, data});
+    setActiveDataset(datasets.size() - 1);
+    return true;
+}
+
+void MainWindow::setActiveDataset(int index)
+{
+    if (index < 0 || index >= datasets.size())
+        return;
+
+    activeDataset = index;
+    const Dataset& ds = datasets[index];
+
+    // Load the dataset into the analysis pipeline and start from a clean
+    // partition/branch/filter state.
+    df = ds.data.copy();
+    originalDf = df.copy();
+    filteredDf = df.copy();
+    partitionDividers.clear();
+    partitionDividersH.clear();
+    activePartition = -1;
+    activePartitionY = -1;
+    activeBranch = BranchAll;
+
+    currentFile = ds.path;
+    appToolBar->updateFileName(currentFile);
+    appToolBar->refreshDatasetList();
+    rightPanel->plotArea->setDefaultTitle(ds.name);
+
+    updateUiAfterLoad();
+    updatePlot();
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event)

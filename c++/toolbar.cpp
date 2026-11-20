@@ -52,6 +52,18 @@ ToolBar::ToolBar(QWidget* parent)
 
     addSeparator();
 
+    // --- Loaded-datasets switcher ---------------------------------------
+    datasetLabel = new QLabel(this);
+    addWidget(datasetLabel);
+
+    datasetCombo = new QComboBox(this);
+    datasetCombo->setMinimumWidth(160);
+    connect(datasetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &ToolBar::onDatasetSelected);
+    addWidget(datasetCombo);
+
+    addSeparator();
+
     fileLabel = new QLabel(this);
     fileLabel->setAlignment(Qt::AlignCenter);
     addWidget(fileLabel);
@@ -79,6 +91,9 @@ void ToolBar::retranslateUi()
     savePresetAction->setText(tr("Save Preset"));
     savePresetAction->setToolTip(tr("Save the current options as a named preset"));
     deletePresetAction->setText(tr("Delete Preset"));
+    datasetLabel->setText(tr("Dataset:"));
+    datasetCombo->setToolTip(tr("Switch the active dataset; other loaded files "
+                                "are overlaid on the plot"));
     updateFileName(currentFilePath);
 }
 
@@ -106,6 +121,31 @@ void ToolBar::refreshPresetList()
     if (idx >= 0)
         presetCombo->setCurrentIndex(idx);
     presetCombo->blockSignals(false);
+}
+
+void ToolBar::refreshDatasetList()
+{
+    if (!mainWindow)
+        return;
+
+    datasetCombo->blockSignals(true);
+    datasetCombo->clear();
+    for (const auto& ds : mainWindow->datasets)
+        datasetCombo->addItem(ds.name);
+    if (mainWindow->activeDataset >= 0 &&
+        mainWindow->activeDataset < datasetCombo->count())
+        datasetCombo->setCurrentIndex(mainWindow->activeDataset);
+    datasetCombo->setEnabled(datasetCombo->count() > 1);
+    datasetCombo->blockSignals(false);
+}
+
+void ToolBar::onDatasetSelected(int index)
+{
+    if (!mainWindow || index < 0)
+        return;
+    if (index == mainWindow->activeDataset)
+        return;
+    mainWindow->setActiveDataset(index);
 }
 
 void ToolBar::onSavePreset()

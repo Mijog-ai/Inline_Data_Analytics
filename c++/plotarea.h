@@ -45,7 +45,8 @@ public:
     explicit PlotArea(QWidget* parent = nullptr);
 
     void plotData(const DataFrame& df, const QString& xColumn, const QStringList& yColumns,
-                  const QVariantMap& smoothingParams, const QString& title = QString());
+                  const QVariantMap& smoothingParams, const QString& title = QString(),
+                  const QVector<QPair<QString, DataFrame>>& overlays = {});
 
     void applyCurveFitting(const QVector<double>& xData, const QVector<double>& yData,
                            std::function<double(double)> fitFunc, const QString& equation,
@@ -217,11 +218,21 @@ private:
     QPointF pendingClickValue;
     static constexpr int DOUBLE_CLICK_INTERVAL = 300;
 
+    // Base colours per plotted column. Chosen bright and well-separated so the
+    // progressively darker shades used for overlaid datasets stay clearly
+    // distinguishable from the base (dark starting colours collapse to black
+    // when darkened, which made the first two series hard to tell apart).
     static constexpr int NUM_COLORS = 9;
     QColor colors[NUM_COLORS] = {
-        QColor(79, 121, 66),   QColor(100, 100, 255), QColor(255, 150, 100),
-        QColor(255, 255, 100),  QColor(255, 100, 255), QColor(100, 255, 255),
-        QColor(150, 100, 255),  QColor(255, 200, 100), QColor(100, 255, 200)
+        QColor( 66, 165, 245),  // blue
+        QColor(239, 108,  55),  // orange
+        QColor( 76, 187,  95),  // green
+        QColor(171, 110, 224),  // purple
+        QColor(236, 190,  40),  // gold
+        QColor( 38, 198, 218),  // cyan
+        QColor(236, 101, 174),  // pink
+        QColor(141, 110,  99),  // brown
+        QColor(120, 144, 156)   // blue-grey
     };
 
     QGraphicsLineItem* crosshairV = nullptr;

@@ -26,6 +26,27 @@ public:
     bool unsavedChanges = false;
     QString currentFile;
 
+    // Multiple loaded files. Every dataset must share the same set of column
+    // names as the first one loaded (order-independent); a file whose columns
+    // differ is rejected. One dataset is "active" at a time and drives the
+    // analysis pipeline (df/originalDf/filteredDf, filtering, partitioning,
+    // statistics, curve fitting); the others are overlaid on the plot.
+    struct Dataset {
+        QString name;   // display name (file base name, made unique)
+        QString path;   // source file path
+        DataFrame data; // raw loaded data
+    };
+    QVector<Dataset> datasets;
+    int activeDataset = -1;
+    QStringList referenceColumns;  // sorted column-name set of the first dataset
+
+    // Register a freshly loaded file. Enforces the column-name-set check against
+    // the first dataset, shows a message and returns false if it does not match.
+    bool addDataset(const QString& path, const DataFrame& data);
+    // Make dataset `index` the active one: load it into the analysis pipeline,
+    // reset partition/branch/filter state and refresh the whole UI.
+    void setActiveDataset(int index);
+
     // Partitioning / branch (upstream-downstream) state.
     // Everything that is plotted, analysed or fitted operates on currentSubset(),
     // which is filteredDf narrowed to the selected branch and partition segment.

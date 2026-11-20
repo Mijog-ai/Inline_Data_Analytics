@@ -16,8 +16,12 @@ public:
     // Reload the preset dropdown from the presets stored beside the exe.
     void refreshPresetList();
 
+    // Rebuild the loaded-datasets dropdown from MainWindow's registry.
+    void refreshDatasetList();
+
 private slots:
     void loadFileTriggered();
+    void onDatasetSelected(int index);
     void onSavePreset();
     void onLoadPreset();
     void onDeletePreset();
@@ -38,5 +42,7 @@ private:
     QAction* deletePresetAction;
     QLabel* fileLabel;
     QComboBox* presetCombo;
+    QLabel* datasetLabel;
+    QComboBox* datasetCombo;
     MainWindow* mainWindow;
 };

@@ -593,7 +593,8 @@ static QList<QPointF> buildPointList(const QVector<double>& xData, const QVector
 }
 
 void PlotArea::plotData(const DataFrame& df, const QString& xColumn, const QStringList& yColumns,
-                        const QVariantMap& smoothingParams, const QString& title)
+                        const QVariantMap& smoothingParams, const QString& title,
+                        const QVector<QPair<QString, DataFrame>>& overlays)
 {
     clearPlot();
 
@@ -692,6 +693,41 @@ void PlotArea::plotData(const DataFrame& df, const QString& xColumn, const QStri
         }
 
         plotItems.append(plotItem);
+
+        // Overlay the same column from every other dataset: same y-axis and the
+        // same base colour as the active dataset, but a progressively darker
+        // shade so the datasets can be told apart. All lines stay solid; the
+        // active dataset above keeps the base colour.
+        for (int j = 0; j < overlays.size(); ++j) {
+            const DataFrame& odf = overlays[j].second;
+            if (odf.isEmpty() || !odf.hasColumn(xColumn) || !odf.hasColumn(yCol))
+                continue;
+            const QVector<double>& oX = odf.columnRef(xColumn);
+            const QVector<double>& oY = odf.columnRef(yCol);
+            if (oX.isEmpty() || oY.isEmpty())
+                continue;
+
+            // 145, 190, 235, ... -> each successive dataset a clear step darker.
+            QColor shade = color.darker(145 + j * 45);
+
+            auto* oSeries = new QLineSeries(this);
+            oSeries->setName(yCol + " — " + overlays[j].first);
+            QPen oPen(shade, 2.0, Qt::SolidLine);
+            oSeries->setPen(oPen);
+            oSeries->replace(buildPointList(oX, oY));
+            chart->addSeries(oSeries);
+            oSeries->attachAxis(xAxis);
+            oSeries->attachAxis(yAx);
+
+            PlotItem oItem;
+            oItem.name = oSeries->name();
+            oItem.color = shade;
+            oItem.series = oSeries;
+            oItem.yAxis = yAx;
+            oItem.xData = oX;
+            oItem.yData = oY;
+            plotItems.append(oItem);
+        }
     }
 
     if (!title.isEmpty())
