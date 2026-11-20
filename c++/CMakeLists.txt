@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(InlineDataAnalytics VERSION 1.0 LANGUAGES CXX)
+# Single authoritative version: the VERSION file in this directory (see packaging/README.md).
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" APP_VERSION_RAW LIMIT_COUNT 1)
+string(STRIP "${APP_VERSION_RAW}" APP_VERSION)
+if(NOT APP_VERSION)
+    set(APP_VERSION "0.0.0")
+endif()
+
+project(InlineDataAnalytics VERSION ${APP_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -77,6 +84,9 @@ target_link_libraries(InlineDataAnalytics PRIVATE
     Qt6::PrintSupport
     Qt6::ZlibPrivate
 )
+
+# Make the version (from the VERSION file) available to the code as APP_VERSION.
+target_compile_definitions(InlineDataAnalytics PRIVATE APP_VERSION="${APP_VERSION}")
 
 install(TARGETS InlineDataAnalytics
     BUNDLE DESTINATION .
