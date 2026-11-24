@@ -108,6 +108,48 @@ void StatisticsArea::updateStats(const DataFrame& df)
     }
 }
 
+void StatisticsArea::updateStatsMulti(const QVector<QPair<QString, DataFrame>>& sets)
+{
+    // Collect non-empty datasets.
+    QVector<QPair<QString, DataFrame>> active;
+    for (const auto& s : sets)
+        if (!s.second.isEmpty())
+            active.append(s);
+
+    if (active.isEmpty()) {
+        clearStats();
+        return;
+    }
+    if (active.size() == 1) {
+        updateStats(active.first().second);
+        return;
+    }
+
+    // Caching does not apply cleanly across multiple frames; always rebuild.
+    lastDataHash.clear();
+
+    int totalRows = 0;
+    for (const auto& s : active)
+        totalRows += s.second.describe().size();
+    table->setRowCount(totalRows);
+
+    int row = 0;
+    for (const auto& s : active) {
+        const QString& dsName = s.first;
+        const auto stats = s.second.describe();
+        for (const auto& st : stats) {
+            auto* nameItem = new QTableWidgetItem(dsName + " · " + st.name);
+            nameItem->setToolTip(tr("Count: %1").arg(st.count));
+            table->setItem(row, 0, nameItem);
+            table->setItem(row, 1, new QTableWidgetItem(QString::number(st.max, 'f', 4)));
+            table->setItem(row, 2, new QTableWidgetItem(QString::number(st.mean, 'f', 4)));
+            table->setItem(row, 3, new QTableWidgetItem(QString::number(st.min, 'f', 4)));
+            table->setItem(row, 4, new QTableWidgetItem(QString::number(st.std, 'f', 4)));
+            ++row;
+        }
+    }
+}
+
 void StatisticsArea::clearStats()
 {
     table->setRowCount(0);

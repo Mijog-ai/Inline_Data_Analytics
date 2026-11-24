@@ -193,100 +193,121 @@ void MainWindow::resetUi()
 
 void MainWindow::loadFile(const QString& filePath)
 {
-    QString path = filePath;
+    QStringList paths;
 
     qCInfo(lcMainWindow) << "loadFile method called";
 
-    if (path.isEmpty()) {
-        path = QFileDialog::getOpenFileName(
-            this, tr("Open File"), QString(),
+    if (filePath.isEmpty()) {
+        paths = QFileDialog::getOpenFileNames(
+            this, tr("Open File(s)"), QString(),
             tr("All Files (*);;ASC Files (*.asc);;CSV Files (*.csv);;"
                "TDMS Files (*.tdms);;Excel Files (*.xlsx *.xlsm *.xls)"));
+    } else {
+        paths << filePath;
     }
 
-    if (path.isEmpty()) {
+    if (paths.isEmpty()) {
         qCInfo(lcMainWindow) << "File loading cancelled by user";
         return;
     }
 
-    qCInfo(lcMainWindow) << "File selected:" << path;
+    QElapsedTimer timer;
+    timer.start();
+    int added = 0;
+    for (const QString& path : paths) {
+        qCInfo(lcMainWindow) << "File selected:" << path;
+        added += loadSingleFile(path);
+    }
 
+    if (added > 0) {
+        QMessageBox::information(this, tr("Success"),
+            tr("%1 dataset(s) loaded (%2 in total).\nActive: %3 rows, %4 columns (%5 ms)")
+                .arg(added).arg(datasets.size())
+                .arg(df.rowCount()).arg(df.columnCount()).arg(timer.elapsed()));
+    }
+}
+
+int MainWindow::loadSingleFile(const QString& path)
+{
     try {
         QFileInfo fi(path);
-        QString ext = fi.suffix().toLower();
+        const QString ext = fi.suffix().toLower();
 
         const bool isExcel = (ext == "xlsx" || ext == "xlsm" || ext == "xls");
         if (!isExcel && ext != "asc" && ext != "csv" && ext != "tdms") {
             QMessageBox::critical(this, tr("Error"),
                                   tr("Unsupported file type: %1").arg(ext));
-            return;
+            return 0;
         }
 
-        // Pick the Excel sheet before showing the wait cursor
-        QString excelSheet;
+        // Pick the Excel sheet(s) before showing the wait cursor
+        QStringList excelSheets;
         if (isExcel) {
             QStringList sheetNames = FileLoaders::getExcelSheets(path);
 
             if (sheetNames.isEmpty()) {
                 QMessageBox::critical(this, tr("Error"), tr("No sheets found in Excel file"));
-                return;
+                return 0;
             }
 
             if (sheetNames.size() > 1) {
                 SheetSelectionDialog dialog(sheetNames, this);
                 if (dialog.exec() != QDialog::Accepted) {
                     qCInfo(lcMainWindow) << "User cancelled sheet selection";
-                    return;
+                    return 0;
                 }
-                excelSheet = dialog.getSelectedSheet();
+                excelSheets = dialog.getSelectedSheets();
             } else {
-                excelSheet = sheetNames.first();
+                excelSheets = sheetNames;
             }
         }
 
-        QApplication::setOverrideCursor(Qt::WaitCursor);
-        QElapsedTimer timer;
-        timer.start();
+        // Non-Excel files load as one dataset (empty sheet name).
+        const QStringList jobs = isExcel ? excelSheets : QStringList{QString()};
+        int added = 0;
 
-        DataFrame loaded;
+        for (const QString& sheet : jobs) {
+            QApplication::setOverrideCursor(Qt::WaitCursor);
+            DataFrame loaded;
+            QString nameHint;
 
-        if (ext == "asc") {
-            loaded = FileLoaders::loadAscFile(path);
-        } else if (ext == "csv") {
-            loaded = FileLoaders::loadCsvFile(path);
-        } else if (ext == "tdms") {
-            loaded = FileLoaders::loadTdmsFile(path);
-        } else {
-            loaded = FileLoaders::loadExcelFile(path, excelSheet);
-            qCInfo(lcMainWindow) << "Loaded sheet:" << excelSheet;
-        }
-
-        if (loaded.isEmpty()) {
+            try {
+                if (ext == "asc") {
+                    loaded = FileLoaders::loadAscFile(path);
+                } else if (ext == "csv") {
+                    loaded = FileLoaders::loadCsvFile(path);
+                } else if (ext == "tdms") {
+                    loaded = FileLoaders::loadTdmsFile(path);
+                } else {
+                    loaded = FileLoaders::loadExcelFile(path, sheet);
+                    qCInfo(lcMainWindow) << "Loaded sheet:" << sheet;
+                    if (excelSheets.size() > 1)
+                        nameHint = fi.completeBaseName() + " - " + sheet;
+                }
+            } catch (...) {
+                QApplication::restoreOverrideCursor();
+                throw;
+            }
             QApplication::restoreOverrideCursor();
-            QMessageBox::critical(this, tr("Error"), tr("No data loaded from the file"));
-            return;
-        }
 
-        if (!addDataset(path, loaded)) {
-            // Column set did not match the already-loaded files; addDataset
-            // has already told the user why.
-            QApplication::restoreOverrideCursor();
-            return;
-        }
+            if (loaded.isEmpty()) {
+                QMessageBox::critical(this, tr("Error"),
+                    isExcel ? tr("No data loaded from sheet \"%1\"").arg(sheet)
+                            : tr("No data loaded from the file"));
+                continue;
+            }
 
-        QApplication::restoreOverrideCursor();
-        qint64 elapsed = timer.elapsed();
-        qCInfo(lcMainWindow) << "File loaded successfully. Rows:" << df.rowCount()
-                             << "in" << elapsed << "ms";
-        QMessageBox::information(this, tr("Success"),
-            tr("File loaded successfully!\n%1 rows, %2 columns in %3 ms")
-                .arg(df.rowCount()).arg(df.columnCount()).arg(elapsed));
+            // On a column mismatch addDataset has already told the user why.
+            if (addDataset(path, loaded, nameHint))
+                ++added;
+        }
+        return added;
 
     } catch (const std::exception& e) {
-        QApplication::restoreOverrideCursor();
         qCCritical(lcMainWindow) << "Error loading file:" << e.what();
         QMessageBox::critical(this, tr("Error"),
                               tr("An error occurred while loading the file: %1").arg(e.what()));
+        return 0;
     }
 }
 
@@ -315,13 +336,43 @@ void MainWindow::saveData()
     if (fileName.isEmpty())
         return;
 
+    const bool multi = datasets.size() > 1;
+
     if (fileName.endsWith(".csv")) {
-        if (writeCsv(fileName, data))
-            QMessageBox::information(this, tr("Success"), tr("Data saved successfully!"));
+        if (!multi) {
+            if (writeCsv(fileName, data))
+                QMessageBox::information(this, tr("Success"), tr("Data saved successfully!"));
+            return;
+        }
+        // CSV holds one table, so write one file per dataset, suffixed by name.
+        QFileInfo fi(fileName);
+        int ok = 0;
+        for (int k = 0; k < datasets.size(); ++k) {
+            DataFrame d = exportDataForDataset(k, plotView);
+            if (d.isEmpty())
+                continue;
+            QString out = fi.dir().filePath(
+                fi.completeBaseName() + "_" + datasets[k].name + ".csv");
+            if (writeCsv(out, d))
+                ++ok;
+        }
+        QMessageBox::information(this, tr("Success"),
+            tr("Saved %1 dataset file(s) next to:\n%2").arg(ok).arg(fileName));
     } else if (fileName.endsWith(".xlsx")) {
         try {
             QApplication::setOverrideCursor(Qt::WaitCursor);
-            FileLoaders::saveExcelFile(fileName, {{QStringLiteral("Data"), data, {}}});
+            QVector<FileLoaders::ExcelSheet> sheets;
+            if (!multi) {
+                sheets.append({QStringLiteral("Data"), data, {}});
+            } else {
+                // One worksheet per dataset, same filter/plot-view projection.
+                for (int k = 0; k < datasets.size(); ++k) {
+                    DataFrame d = exportDataForDataset(k, plotView);
+                    if (!d.isEmpty())
+                        sheets.append({datasets[k].name, d, {}});
+                }
+            }
+            FileLoaders::saveExcelFile(fileName, sheets);
             QApplication::restoreOverrideCursor();
             QMessageBox::information(this, tr("Success"), tr("Data saved successfully!"));
         } catch (const std::exception& e) {
@@ -353,7 +404,27 @@ bool MainWindow::writeCsv(const QString& fileName, const DataFrame& data)
 
 DataFrame MainWindow::plotViewData() const
 {
-    const DataFrame subset = currentSubset();
+    return plotViewOf(currentSubset());
+}
+
+DataFrame MainWindow::datasetSubset(int index) const
+{
+    if (index < 0 || index >= datasets.size())
+        return DataFrame();
+    if (index == activeDataset)
+        return currentSubset();
+    return narrowToSelection(applyCurrentFilter(datasets[index].data));
+}
+
+DataFrame MainWindow::exportDataForDataset(int index, bool plotView) const
+{
+    if (index < 0 || index >= datasets.size())
+        return DataFrame();
+    return plotView ? plotViewOf(datasetSubset(index)) : datasets[index].data;
+}
+
+DataFrame MainWindow::plotViewOf(const DataFrame& subset) const
+{
     const QString xCol = leftPanel->axisSelection->xColumn();
     if (subset.isEmpty() || xCol.isEmpty() || !subset.hasColumn(xCol))
         return DataFrame();
@@ -494,20 +565,45 @@ void MainWindow::exportTableToExcel()
     if (!fileName.endsWith(".xlsx", Qt::CaseInsensitive))
         fileName += ".xlsx";
 
-    // Statistics in the layout of pandas' describe(): one column per data column.
-    QList<QVariantList> statsRows;
-    const auto stats = data.describe();
-    QVariantList header{QString()}, countRow{"count"}, meanRow{"mean"}, stdRow{"std"},
-        minRow{"min"}, maxRow{"max"};
-    for (const auto& s : stats) {
-        header << s.name;
-        countRow << s.count;
-        meanRow << s.mean;
-        stdRow << s.std;
-        minRow << s.min;
-        maxRow << s.max;
+    const bool multi = datasets.size() > 1;
+
+    // One (sheet name, data) pair per dataset to export; single dataset keeps
+    // the "Data" sheet name as before.
+    QVector<QPair<QString, DataFrame>> exportSets;
+    if (!multi) {
+        exportSets.append({QStringLiteral("Data"), data});
+    } else {
+        for (int k = 0; k < datasets.size(); ++k) {
+            DataFrame d = exportDataForDataset(k, plotView);
+            if (!d.isEmpty())
+                exportSets.append({datasets[k].name, d});
+        }
     }
-    statsRows << header << countRow << meanRow << stdRow << minRow << maxRow;
+
+    // Statistics in the layout of pandas' describe(): one column per data
+    // column, with a per-dataset block when several are loaded.
+    auto describeBlock = [](const DataFrame& d) {
+        QList<QVariantList> rows;
+        const auto stats = d.describe();
+        QVariantList header{QString()}, countRow{"count"}, meanRow{"mean"}, stdRow{"std"},
+            minRow{"min"}, maxRow{"max"};
+        for (const auto& s : stats) {
+            header << s.name; countRow << s.count; meanRow << s.mean;
+            stdRow << s.std; minRow << s.min; maxRow << s.max;
+        }
+        rows << header << countRow << meanRow << stdRow << minRow << maxRow;
+        return rows;
+    };
+    QList<QVariantList> statsRows;
+    if (!multi) {
+        statsRows = describeBlock(data);
+    } else {
+        for (const auto& set : exportSets) {
+            statsRows << QVariantList{set.first};
+            statsRows.append(describeBlock(set.second));
+            statsRows << QVariantList{};  // blank spacer row
+        }
+    }
 
     QStringList yAxes;
     for (const auto* item : leftPanel->axisSelection->yList->selectedItems())
@@ -542,12 +638,13 @@ void MainWindow::exportTableToExcel()
 
     try {
         QApplication::setOverrideCursor(Qt::WaitCursor);
-        FileLoaders::saveExcelFile(fileName, {
-            {QStringLiteral("Data"), data, {}},
-            {QStringLiteral("Statistics"), {}, statsRows},
-            {QStringLiteral("Plot Configuration"), {}, configRows},
-            {QStringLiteral("Comments"), {}, commentRows},
-        });
+        QVector<FileLoaders::ExcelSheet> sheets;
+        for (const auto& set : exportSets)
+            sheets.append({set.first, set.second, {}});
+        sheets.append({QStringLiteral("Statistics"), {}, statsRows});
+        sheets.append({QStringLiteral("Plot Configuration"), {}, configRows});
+        sheets.append({QStringLiteral("Comments"), {}, commentRows});
+        FileLoaders::saveExcelFile(fileName, sheets);
         QApplication::restoreOverrideCursor();
         QMessageBox::information(this, tr("Success"), tr("Table exported to Excel successfully!"));
     } catch (const std::exception& e) {
@@ -633,12 +730,15 @@ void MainWindow::updatePlot(bool updateFilter)
             isLoop = detectTurningIndex(filteredDf.columnRef(xColumn)) >= 0;
         rightPanel->plotArea->setBranchAvailable(isLoop);
 
-        // Overlay the other loaded datasets (same columns, same colours/axes,
-        // but a distinct line style each) so they can be compared visually.
+        // Overlay the other loaded datasets. Each one gets the same data
+        // filter and the same branch/partition narrowing as the active
+        // dataset, so filters and segment selections affect every curve on
+        // the plot, not just the active file.
         QVector<QPair<QString, DataFrame>> overlays;
         for (int k = 0; k < datasets.size(); ++k)
             if (k != activeDataset)
-                overlays.append({datasets[k].name, datasets[k].data});
+                overlays.append({datasets[k].name,
+                                 narrowToSelection(applyCurrentFilter(datasets[k].data))});
 
         rightPanel->plotArea->plotData(currentSubset(), xColumn, yColumns,
                                        smoothingParams, QString(), overlays);
@@ -655,10 +755,23 @@ void MainWindow::updatePlot(bool updateFilter)
 void MainWindow::updateStatistics()
 {
     DataFrame subset = currentSubset();
-    if (!subset.isEmpty()) {
-        rightPanel->statisticsArea->updateStats(subset);
-    } else {
+    if (subset.isEmpty()) {
         qCWarning(lcMainWindow) << "No data available to update statistics";
+        return;
+    }
+
+    // With more than one dataset loaded, show stats for every dataset using the
+    // same filter/segment narrowing, so the panel mirrors the plot.
+    if (datasets.size() > 1 && activeDataset >= 0) {
+        QVector<QPair<QString, DataFrame>> sets;
+        sets.append({datasets[activeDataset].name, subset});
+        for (int k = 0; k < datasets.size(); ++k)
+            if (k != activeDataset)
+                sets.append({datasets[k].name,
+                             narrowToSelection(applyCurrentFilter(datasets[k].data))});
+        rightPanel->statisticsArea->updateStatsMulti(sets);
+    } else {
+        rightPanel->statisticsArea->updateStats(subset);
     }
 }
 
@@ -695,6 +808,35 @@ int MainWindow::detectTurningIndex(const QVector<double>& x) const
 }
 
 DataFrame MainWindow::currentSubset() const
+{
+    return narrowToSelection(filteredDf);
+}
+
+DataFrame MainWindow::applyCurrentFilter(const DataFrame& source) const
+{
+    if (source.isEmpty())
+        return source;
+
+    const QString filterCol = leftPanel->dataFilter->filterColumn->currentText();
+    if (filterCol.isEmpty() || !source.hasColumn(filterCol))
+        return source;
+
+    const QString minS = leftPanel->dataFilter->minValue->text();
+    const QString maxS = leftPanel->dataFilter->maxValue->text();
+    const bool hasMin = !minS.trimmed().isEmpty();
+    const bool hasMax = !maxS.trimmed().isEmpty();
+    if (!hasMin && !hasMax)
+        return source;
+
+    const double mn = hasMin ? minS.toDouble() : std::numeric_limits<double>::lowest();
+    const double mx = hasMax ? maxS.toDouble() : std::numeric_limits<double>::max();
+    DataFrame f = source.filter(filterCol, mn, mx);
+    // Mirror the active-dataset behaviour: an empty result means the range
+    // excludes everything, so fall back to the unfiltered frame.
+    return f.rowCount() > 0 ? f : source;
+}
+
+DataFrame MainWindow::narrowToSelection(const DataFrame& filteredDf) const
 {
     if (filteredDf.isEmpty())
         return filteredDf;
@@ -859,25 +1001,30 @@ void MainWindow::exportCurrentSubset()
     if (!fileName.endsWith(".csv", Qt::CaseInsensitive))
         fileName += ".csv";
 
-    QFile file(fileName);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, tr("Error"), tr("Could not open file for writing"));
+    if (datasets.size() <= 1) {
+        if (writeCsv(fileName, subset))
+            QMessageBox::information(this, tr("Export Complete"),
+                tr("Exported %1 rows to:\n%2\n\n(CSV opens directly in Excel.)")
+                    .arg(subset.rowCount()).arg(fileName));
         return;
     }
-    QTextStream out(&file);
-    const QStringList cols = subset.columnNames();
-    out << cols.join(';') << "\n";
-    for (int r = 0; r < subset.rowCount(); ++r) {
-        QStringList vals;
-        for (const auto& col : cols)
-            vals << QString::number(subset.value(r, col), 'g', 10);
-        out << vals.join(';') << "\n";
-    }
-    file.close();
 
+    // Several datasets loaded: write the active one to the chosen file and each
+    // other dataset's matching subset to a file suffixed with its name.
+    QFileInfo fi(fileName);
+    int files = 0, rows = 0;
+    for (int k = 0; k < datasets.size(); ++k) {
+        DataFrame sub = datasetSubset(k);
+        if (sub.isEmpty())
+            continue;
+        QString out = (k == activeDataset)
+            ? fileName
+            : fi.dir().filePath(fi.completeBaseName() + "_" + datasets[k].name + ".csv");
+        if (writeCsv(out, sub)) { ++files; rows += sub.rowCount(); }
+    }
     QMessageBox::information(this, tr("Export Complete"),
-        tr("Exported %1 rows to:\n%2\n\n(CSV opens directly in Excel.)")
-            .arg(subset.rowCount()).arg(fileName));
+        tr("Exported %1 dataset file(s), %2 rows total, next to:\n%3\n\n"
+           "(CSV opens directly in Excel.)").arg(files).arg(rows).arg(fileName));
 }
 
 void MainWindow::updateUiAfterLoad()
@@ -891,7 +1038,8 @@ void MainWindow::updateUiAfterLoad()
     }
 }
 
-bool MainWindow::addDataset(const QString& path, const DataFrame& data)
+bool MainWindow::addDataset(const QString& path, const DataFrame& data,
+                            const QString& nameHint)
 {
     // Enforce the shared-column-names rule (order-independent) against the
     // first dataset that was loaded.
@@ -922,7 +1070,7 @@ bool MainWindow::addDataset(const QString& path, const DataFrame& data)
         referenceColumns = sortedCols;
 
     // Build a unique display name from the file base name.
-    QString base = QFileInfo(path).completeBaseName();
+    QString base = nameHint.isEmpty() ? QFileInfo(path).completeBaseName() : nameHint;
     QString name = base;
     int suffix = 2;
     auto nameTaken = [this](const QString& n) {

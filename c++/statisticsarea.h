@@ -16,6 +16,9 @@ public:
     explicit StatisticsArea(QWidget* parent = nullptr);
 
     void updateStats(const DataFrame& df);
+    // Show statistics for several datasets at once, one group of rows per
+    // dataset (each stat row prefixed with the dataset name).
+    void updateStatsMulti(const QVector<QPair<QString, DataFrame>>& sets);
     void clearStats();
 
     // Session save/load support

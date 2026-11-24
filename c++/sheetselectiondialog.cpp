@@ -16,26 +16,20 @@ void SheetSelectionDialog::setupUi(const QStringList& sheets)
 
     // Info label
     auto* infoLabel = new QLabel(
-        tr("The selected file contains multiple sheets.\nPlease select the sheet to load:"), this);
+        tr("The selected file contains multiple sheets.\n"
+           "Select one or more sheets to load (each becomes its own dataset):"), this);
     infoLabel->setStyleSheet("font-size: 10pt; padding: 5px;");
     infoLabel->setWordWrap(true);
     layout->addWidget(infoLabel);
 
-    // Sheet selection combo
-    sheetCombo = new QComboBox(this);
-    sheetCombo->addItems(sheets);
-    sheetCombo->setToolTip(tr("Select a sheet to load"));
-    sheetCombo->setStyleSheet(R"(
-        QComboBox {
-            padding: 5px;
-            border: 1px solid #bdc3c7;
-            border-radius: 4px;
-        }
-        QComboBox:focus {
-            border: 1px solid #3498db;
-        }
-    )");
-    layout->addWidget(sheetCombo);
+    // Sheet selection list (click to toggle several sheets)
+    sheetList = new QListWidget(this);
+    sheetList->addItems(sheets);
+    sheetList->setSelectionMode(QAbstractItemView::MultiSelection);
+    sheetList->setToolTip(tr("Select the sheets to load"));
+    if (sheetList->count() > 0)
+        sheetList->item(0)->setSelected(true);
+    layout->addWidget(sheetList);
 
     layout->addSpacing(10);
 
@@ -55,15 +49,28 @@ void SheetSelectionDialog::setupUi(const QStringList& sheets)
     )");
     layout->addWidget(buttonBox);
 
-    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, [this]() {
+        if (!getSelectedSheets().isEmpty())
+            accept();
+    });
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     setLayout(layout);
 }
 
+QStringList SheetSelectionDialog::getSelectedSheets() const
+{
+    QStringList result;
+    for (int i = 0; i < sheetList->count(); ++i)
+        if (sheetList->item(i)->isSelected())
+            result << sheetList->item(i)->text();
+    return result;
+}
+
 QString SheetSelectionDialog::getSelectedSheet() const
 {
-    return sheetCombo->currentText();
+    const QStringList s = getSelectedSheets();
+    return s.isEmpty() ? QString() : s.first();
 }
 
 QString SheetSelectionDialog::selectSheet(const QStringList& sheets, QWidget* parent)

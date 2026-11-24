@@ -51,6 +51,10 @@ public:
     void applyCurveFitting(const QVector<double>& xData, const QVector<double>& yData,
                            std::function<double(double)> fitFunc, const QString& equation,
                            const QString& fitType, const QString& xLabel, const QString& yLabel);
+    // Draw an additional fit curve (for an overlaid dataset) on the primary
+    // y-axis in the given colour, so curve fitting mirrors across datasets.
+    void addFitCurve(const QVector<double>& xData, std::function<double(double)> fitFunc,
+                     const QColor& color, const QString& name);
     void removeCurveFitting();
 
     void clearPlot();
@@ -74,6 +78,9 @@ public:
         QVector<double> yData;
     };
     QVector<PlotItem> plotItems;
+    // Fit curves for overlaid datasets (the active dataset's fit lives in
+    // plotItems[0].fitSeries). Cleared by removeCurveFitting() and clearPlot().
+    QVector<QLineSeries*> datasetFitSeries;
 
     bool getShowOriginalState() const { return showOriginalData; }
     void setShowOriginalState(bool show) { showOriginalData = show; }

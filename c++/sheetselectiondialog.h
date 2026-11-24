@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QDialog>
-#include <QComboBox>
+#include <QListWidget>
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -14,7 +14,8 @@ class SheetSelectionDialog : public QDialog {
 public:
     explicit SheetSelectionDialog(const QStringList& sheets, QWidget* parent = nullptr);
 
-    QString getSelectedSheet() const;
+    QStringList getSelectedSheets() const;
+    QString getSelectedSheet() const;  // first selected sheet
 
     // Static convenience method
     static QString selectSheet(const QStringList& sheets, QWidget* parent = nullptr);
@@ -22,5 +23,5 @@ public:
 private:
     void setupUi(const QStringList& sheets);
 
-    QComboBox* sheetCombo;
+    QListWidget* sheetList;
 };

@@ -610,6 +610,17 @@ void PlotArea::plotData(const DataFrame& df, const QString& xColumn, const QStri
 
     double xMin, xMax;
     if (!finiteMinMax(xData, xMin, xMax)) return;
+    // Span the overlaid datasets' x range too, so none is scaled off-screen.
+    for (const auto& ov : overlays) {
+        const DataFrame& odf = ov.second;
+        if (odf.isEmpty() || !odf.hasColumn(xColumn))
+            continue;
+        double oMin, oMax;
+        if (finiteMinMax(odf.columnRef(xColumn), oMin, oMax)) {
+            xMin = std::min(xMin, oMin);
+            xMax = std::max(xMax, oMax);
+        }
+    }
     double xMargin = (xMax - xMin) * 0.02;
     if (xMargin == 0) xMargin = 1.0;
     xAxis->setRange(xMin - xMargin, xMax + xMargin);
@@ -644,6 +655,18 @@ void PlotArea::plotData(const DataFrame& df, const QString& xColumn, const QStri
         double yMin, yMax;
         if (!finiteMinMax(yData, yMin, yMax)) {
             yMin = 0; yMax = 1;
+        }
+        // Expand the axis to span the overlaid datasets too, so a dataset with
+        // a different value range stays on-screen instead of being scaled out.
+        for (const auto& ov : overlays) {
+            const DataFrame& odf = ov.second;
+            if (odf.isEmpty() || !odf.hasColumn(yCol))
+                continue;
+            double oMin, oMax;
+            if (finiteMinMax(odf.columnRef(yCol), oMin, oMax)) {
+                yMin = std::min(yMin, oMin);
+                yMax = std::max(yMax, oMax);
+            }
         }
         double yMargin = (yMax - yMin) * 0.05;
         if (yMargin == 0) yMargin = 1.0;
@@ -710,11 +733,18 @@ void PlotArea::plotData(const DataFrame& df, const QString& xColumn, const QStri
             // 145, 190, 235, ... -> each successive dataset a clear step darker.
             QColor shade = color.darker(145 + j * 45);
 
+            // Apply the same smoothing as the active dataset so every curve on
+            // the plot is processed identically.
+            QVector<double> oPlot = oY;
+            if (applySmoothing)
+                oPlot = Smoothing::applySmoothing(
+                    oY, smoothMethod, windowLength, polyOrder, sigma, alphaVal, lowessFracVal);
+
             auto* oSeries = new QLineSeries(this);
             oSeries->setName(yCol + " — " + overlays[j].first);
-            QPen oPen(shade, 2.0, Qt::SolidLine);
+            QPen oPen(shade, applySmoothing ? 2.5 : 2.0, Qt::SolidLine);
             oSeries->setPen(oPen);
-            oSeries->replace(buildPointList(oX, oY));
+            oSeries->replace(buildPointList(oX, oPlot));
             chart->addSeries(oSeries);
             oSeries->attachAxis(xAxis);
             oSeries->attachAxis(yAx);
@@ -726,6 +756,23 @@ void PlotArea::plotData(const DataFrame& df, const QString& xColumn, const QStri
             oItem.yAxis = yAx;
             oItem.xData = oX;
             oItem.yData = oY;
+
+            // Mirror the active dataset: when smoothing with "show original" on,
+            // draw the overlay's faint raw curve behind its smoothed line too.
+            if (applySmoothing && showOriginalData) {
+                auto* oOrig = new QLineSeries(this);
+                oOrig->setName(oSeries->name() + " (original)");
+                QColor faint = shade;
+                faint.setAlpha(80);
+                QPen oOrigPen(faint, 1.0, Qt::SolidLine);
+                oOrig->setPen(oOrigPen);
+                oOrig->replace(buildPointList(oX, oY));
+                chart->addSeries(oOrig);
+                oOrig->attachAxis(xAxis);
+                oOrig->attachAxis(yAx);
+                oItem.originalSeries = oOrig;
+            }
+
             plotItems.append(oItem);
         }
     }
@@ -782,6 +829,37 @@ void PlotArea::applyCurveFitting(const QVector<double>& xData, const QVector<dou
     updateLegend();
 }
 
+void PlotArea::addFitCurve(const QVector<double>& xData, std::function<double(double)> fitFunc,
+                           const QColor& color, const QString& name)
+{
+    if (!fitFunc || xData.isEmpty() || plotItems.isEmpty() || !plotItems[0].yAxis)
+        return;
+
+    double xMin = *std::min_element(xData.begin(), xData.end());
+    double xMax = *std::max_element(xData.begin(), xData.end());
+    int numPoints = std::max(200, static_cast<int>(xData.size()) * 2);
+    double step = (xMax - xMin) / (numPoints - 1);
+
+    auto* fitSeries = new QLineSeries(this);
+    fitSeries->setName(name);
+    QPen fitPen(color, 2.0, Qt::DashLine);
+    fitSeries->setPen(fitPen);
+
+    for (int i = 0; i < numPoints; ++i) {
+        double x = xMin + i * step;
+        double y = fitFunc(x);
+        if (std::isfinite(y))
+            fitSeries->append(x, y);
+    }
+
+    chart->addSeries(fitSeries);
+    fitSeries->attachAxis(xAxis);
+    fitSeries->attachAxis(plotItems[0].yAxis);
+    datasetFitSeries.append(fitSeries);
+
+    updateLegend();
+}
+
 void PlotArea::removeCurveFitting()
 {
     for (auto& item : plotItems) {
@@ -791,6 +869,10 @@ void PlotArea::removeCurveFitting()
             item.fitSeries = nullptr;
         }
     }
+    for (auto* s : datasetFitSeries) {
+        if (s) { chart->removeSeries(s); delete s; }
+    }
+    datasetFitSeries.clear();
     updateLegend();
 }
 
@@ -841,6 +923,8 @@ void PlotArea::clearPlot()
         }
     }
     plotItems.clear();
+    // removeAllSeries() already deleted these; just drop the dangling pointers.
+    datasetFitSeries.clear();
 
     chart->setTitle(QString());
     updateLegend();

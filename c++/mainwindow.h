@@ -42,7 +42,11 @@ public:
 
     // Register a freshly loaded file. Enforces the column-name-set check against
     // the first dataset, shows a message and returns false if it does not match.
-    bool addDataset(const QString& path, const DataFrame& data);
+    bool addDataset(const QString& path, const DataFrame& data,
+                    const QString& nameHint = QString());
+    // Load one file (every chosen Excel sheet) as dataset(s); returns how many
+    // datasets were added.
+    int loadSingleFile(const QString& path);
     // Make dataset `index` the active one: load it into the analysis pipeline,
     // reset partition/branch/filter state and refresh the whole UI.
     void setActiveDataset(int index);
@@ -59,6 +63,12 @@ public:
 
     // filteredDf narrowed to the active branch and partition segment.
     DataFrame currentSubset() const;
+    // Apply the current data-filter settings (filter column + min/max from the
+    // left panel) to an arbitrary frame, without side effects or dialogs.
+    DataFrame applyCurrentFilter(const DataFrame& source) const;
+    // Narrow an arbitrary frame to the active branch and partition segment/band
+    // using the shared divider values and the selected x/y columns.
+    DataFrame narrowToSelection(const DataFrame& frame) const;
     // Row index of the x turning point (hysteresis apex), or -1 when the data is not a loop.
     int detectTurningIndex(const QVector<double>& x) const;
 
@@ -104,6 +114,12 @@ private:
     // What is drawn in the plot: currentSubset() limited to the visible x range,
     // with the x and selected y columns plus smoothed curves when smoothing is on.
     DataFrame plotViewData() const;
+    // Same plot-view projection for an arbitrary subset (used per dataset).
+    DataFrame plotViewOf(const DataFrame& subset) const;
+    // A dataset narrowed by the current filter + branch/partition selection.
+    DataFrame datasetSubset(int index) const;
+    // Export data for one dataset: the whole dataset, or its current plot view.
+    DataFrame exportDataForDataset(int index, bool plotView) const;
     // Ask whether to export the whole dataset or the current plot view.
     // Returns false if cancelled or the chosen data is empty.
     bool chooseExportData(DataFrame& data, bool& plotView);

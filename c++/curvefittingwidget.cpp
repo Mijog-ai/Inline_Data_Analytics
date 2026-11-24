@@ -157,9 +157,33 @@ void CurveFittingWidget::onApplyFit()
         result = CurveFit::exponentialFit(xData, yData);
     }
 
-    // Apply to plot area
+    // Apply to plot area (active dataset).
     mainWin->rightPanel->plotArea->applyCurveFitting(
         xData, yData, result.fitFunction, result.equation, selectedType, xCol, yCol);
+
+    // Fit every other loaded dataset the same way, so curve fitting mirrors
+    // across all curves on the plot. Each extra fit is drawn in a darker red.
+    for (int k = 0; k < mainWin->datasets.size(); ++k) {
+        if (k == mainWin->activeDataset)
+            continue;
+        DataFrame osub = mainWin->narrowToSelection(
+            mainWin->applyCurrentFilter(mainWin->datasets[k].data));
+        if (osub.isEmpty() || !osub.hasColumn(xCol) || !osub.hasColumn(yCol))
+            continue;
+        QVector<double> oX = osub.column(xCol);
+        QVector<double> oY = osub.column(yCol);
+        if (oX.isEmpty() || oY.isEmpty())
+            continue;
+
+        CurveFit::FitResult oRes = (selectedType == "Polynomial")
+            ? CurveFit::polynomialFit(oX, oY, degreeSpinbox->value())
+            : CurveFit::exponentialFit(oX, oY);
+
+        QColor fitColor = QColor(200, 0, 0).darker(100 + k * 40);
+        mainWin->rightPanel->plotArea->addFitCurve(
+            oX, oRes.fitFunction, fitColor,
+            selectedType + " Fit — " + mainWin->datasets[k].name + ": " + oRes.equation);
+    }
 
     // Show result with R-squared
     QMessageBox::information(this, tr("Fit Applied"),
